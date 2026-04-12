@@ -1,0 +1,84 @@
+# nfty template — minimal, with sane defaults
+# good starting point for new nodes or if youre uncertain
+# -------------------------------------------------------------------
+
+[core]
+  name          = "my-host-firewall"
+  description   = "Minimal, sane defaults"
+  table         = "nfty-minimal"
+  docker_compat = false
+  persist       = true
+
+# ---------------------------------------------------------------------------
+# INPUT — IPv4
+# ---------------------------------------------------------------------------
+
+[[chains.ipv4.input]]
+  comment = "Allow loopback"
+  iif     = "lo"
+  action  = "accept"
+
+[[chains.ipv4.input]]
+  comment    = "ICMP/Ping rate limit"
+  protocol   = "icmp"
+  rate_limit = { rate = "10/second", action = "accept" }
+  over_limit = "drop"
+
+[[chains.ipv4.input]]
+  ct_state = ["established", "related"]
+  action   = "accept"
+
+[[chains.ipv4.input]]
+  ct_state = ["invalid"]
+  action   = "drop"
+
+[[chains.ipv4.input]]
+  comment = "Allowed SSH hosts - EDIT"
+  proto   = "tcp"
+  dport   = [22]
+  src_ips = [ 
+    "10.100.1.1/32", # pc 1
+    "10.100.1.2/32", # server 1
+    "172.16.1.0/24", # vpn subnet
+    ]
+  action  = "accept"
+
+[[chains.ipv4.input]]
+  comment = "SSH — drop and log everything else"
+  proto   = "tcp"
+  dport   = [22]
+  log     = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
+  action  = "drop"
+
+[[chains.ipv4.input]]
+  comment = "Allowed web server hosts"
+  proto   = "tcp"
+  dport   = [80, 443]
+  src_ips = [ 
+    "10.100.1.0/24", # lan
+    "172.16.1.0/24", # vpn subnet
+    ]
+  action  = "accept"
+
+# ---------------------------------------------------------------------------
+# INPUT — IPv6
+# ---------------------------------------------------------------------------
+
+[[chains.ipv6.input]]
+  comment = "Allow loopback"
+  iif     = "lo"
+  action  = "accept"
+
+[[chains.ipv6.input]]
+  comment    = "ICMPv6 — required for IPv6 to function"
+  protocol   = "icmpv6"
+  rate_limit = { rate = "10/second", action = "accept" }
+  over_limit = "drop"
+
+[[chains.ipv6.input]]
+  ct_state = ["established", "related"]
+  action   = "accept"
+
+[[chains.ipv6.input]]
+  ct_state = ["invalid"]
+  action   = "drop"

@@ -1,0 +1,148 @@
+# nfty template — internal, for hosts on your private, home network
+# example is for pihole DNS + SNMP monitoring
+# -------------------------------------------------------------------
+
+[core]
+  name          = "my-host-firewall"
+  description   = "Internal node — pihole DNS & web UI + SNMP monitoring"
+  table         = "nfty-default"
+  docker_compat = true
+  persist       = true
+
+# ---------------------------------------------------------------------------
+# IP Lists
+# ---------------------------------------------------------------------------
+
+[sets.ipv4.dns]
+  comment = "IPv4 DNS Allowlist - keep restricted"
+  entries = [
+    "10.100.1.0/24", # home subnet
+    "172.16.1.0/24", # vpn subnet
+  ]
+
+[sets.ipv4.webui]
+  comment = "IPv4 WebUI Server Allowlist"
+  entries = [
+    "10.100.1.5/32", # desktop pc
+    "172.16.1.0/24", # vpn subnet
+  ]
+
+[sets.ipv4.ssh]
+  comment = "SSH Allowlist"
+  entries = [
+    "10.100.1.5/32", # desktop pc
+  ]
+
+[sets.ipv4.snmp]
+  comment = "SNMP Monitoring Allowlist"
+  entries = [
+    "10.100.2.2/28", # nms server
+  ]
+
+[sets.ipv6.dns]
+  comment = "IPv6 DNS Allowlist"
+  entries = [
+    "2001:db8::/64",    # your home IPv6 prefix
+    "2001:db8::2/128",  # desktop pc
+  ]
+
+# ---------------------------------------------------------------------------
+# INPUT — IPv4
+# ---------------------------------------------------------------------------
+
+[[chains.ipv4.input]]
+  comment = "Allow loopback"
+  iif     = "lo"
+  action  = "accept"
+
+[[chains.ipv4.input]]
+  comment    = "ICMP/Ping rate limit"
+  protocol   = "icmp"
+  rate_limit = { rate = "10/second", action = "accept" }
+  over_limit = "drop"
+
+[[chains.ipv4.input]]
+  ct_state = ["established", "related"]
+  action   = "accept"
+
+[[chains.ipv4.input]]
+  ct_state = ["invalid"]
+  action   = "drop"
+
+[[chains.ipv4.input]]
+  comment = "Allowed SSH hosts"
+  proto   = "tcp"
+  dport   = [22]
+  src_set = "ssh"
+  action  = "accept"
+
+[[chains.ipv4.input]]
+  comment = "SSH — log unauthorized attempts"
+  proto   = "tcp"
+  dport   = [22]
+  log     = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
+  action  = "drop"
+
+[[chains.ipv4.input]]
+  comment = "Allowed SNMP hosts"
+  proto   = "udp"
+  dport   = [161]
+  src_set = "snmp"
+  action  = "accept"
+
+[[chains.ipv4.input]]
+  comment = "Web HTTP/HTTPS"
+  proto   = "tcp"
+  dport   = [80, 443]
+  src_set = "webui"
+  action  = "accept"
+
+[[chains.ipv4.input]]
+  comment = "DNS - TCP"
+  proto   = "tcp"
+  dport   = [53]
+  src_set = "dns"
+  action  = "accept"
+
+[[chains.ipv4.input]]
+  comment = "DNS - UDP"
+  proto   = "udp"
+  dport   = [53]
+  src_set = "dns"
+  action  = "accept"
+
+# ---------------------------------------------------------------------------
+# INPUT — IPv6
+# ---------------------------------------------------------------------------
+
+[[chains.ipv6.input]]
+  comment = "Allow loopback"
+  iif     = "lo"
+  action  = "accept"
+
+[[chains.ipv6.input]]
+  comment    = "ICMPv6 rate limit - required for IPv6 to function"
+  protocol   = "icmpv6"
+  rate_limit = { rate = "20/second", action = "accept" }
+  over_limit = "drop"
+
+[[chains.ipv6.input]]
+  ct_state = ["established", "related"]
+  action   = "accept"
+
+[[chains.ipv6.input]]
+  ct_state = ["invalid"]
+  action   = "drop"
+
+[[chains.ipv6.input]]
+  comment = "DNS IPv6 - Please use caution if hosting a DNS server on IPv6"
+  proto   = "tcp"
+  dport   = [53]
+  src_set = "dns"
+  action  = "accept"
+
+[[chains.ipv6.input]]
+  proto   = "udp"
+  dport   = [53]
+  src_set = "dns"
+  action  = "accept"
