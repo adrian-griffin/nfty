@@ -23,8 +23,12 @@ type CoreConfig struct {
 	Name         string `toml:"name"`
 	Description  string `toml:"description"`
 	Table        string `toml:"table"`
-	DockerCompat bool   `toml:"docker_compat"` // sets chain priority 10
-	Persist      bool   `toml:"persist"`       // reapply on boot via systemd
+	DockerCompat bool   `toml:"docker_compat"` // sets prio to 10
+	Persist      bool   `toml:"persist"`
+	DefaultRules bool   `toml:"default_rules"`
+	ICMPv4Limit  string `toml:"icmpv4_limit"`
+	ICMPv6Limit  string `toml:"icmpv6_limit"`
+	LogSSHFails  bool   `toml:"log_ssh_fails"`
 }
 
 // sub-config struct of parsed ip4 and ip6 sets
@@ -67,6 +71,11 @@ type FamilyChains struct {
 type PortValue struct {
 	Start int
 	End   int
+}
+
+// maps supplied array to individual objects
+type ProtoValue struct {
+	Protocols []string
 }
 
 // returns final port-value object as string
@@ -119,13 +128,32 @@ func (port *PortValue) UnmarshalTOML(data interface{}) error {
 	return nil
 }
 
+// manual unmarshalling to map protocol array
+func (proto *ProtoValue) UnmarshalTOML(data interface{}) error {
+	switch value := data.(type) {
+	case string:
+		proto.Protocols = []string{value}
+	case []interface{}:
+		for _, item := range value {
+			protoItem, ok := item.(string)
+			if !ok {
+				return fmt.Errorf("protocol list entries must be strings")
+			}
+			proto.Protocols = append(proto.Protocols, protoItem)
+		}
+	default:
+		return fmt.Errorf("protocol must be a string or list of strings, got %T", data)
+	}
+	return nil
+}
+
 // defines single rule entry, maps directly to nftables design
 type Rule struct {
 	Comment   string      `toml:"comment"`  //name and description
 	IIF       string      `toml:"iif"`      // inbound interface (lo, etc.)
 	IIFName   string      `toml:"iifname"`  // inbound interface name match
 	OIFName   string      `toml:"oifname"`  // outbound interface name match
-	Protocol  string      `toml:"protocol"` // icmp, icmpv6, tcp, udp
+	Protocol  ProtoValue  `toml:"protocol"` // icmp, icmpv6, tcp, udp
 	DPort     []PortValue `toml:"dport"`    // destination port(s) or ranges
 	SrcSet    string      `toml:"src_set"`  // reference to a named address set
 	SrcIPs    []string    `toml:"src_ips"`  // inline source IPs/CIDRs (alternative to src_set)
@@ -161,15 +189,44 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config %q: %w", path, err)
 	}
 
-	if err := validate(&cfg); err != nil {
+	if err := validateConfig(&cfg); err != nil {
 		return nil, fmt.Errorf("invalid config %q: %w", path, err)
 	}
 
 	return &cfg, nil
 }
 
-// validates content, ips
-func validate(cfg *Config) error {
+// validate chain policy
+func validatePolicy(policy *ChainPolicy) error {
+	// create lookup map of drop/accept
+	valid := map[string]bool{"drop": true, "accept": true}
+	// for each chain, validate whether 'drop' or 'accept' are passed
+	for _, pair := range []struct{ name, val string }{ // anon struct is created inline
+		{"input", policy.Input},
+		{"forward", policy.Forward},
+		{"output", policy.Output},
+		{"postrouting", policy.Postrouting},
+	} {
+		// for each invalid pair, return error
+		if !valid[pair.val] {
+			return fmt.Errorf("chains.policy.%s must be \"drop\" or \"accept\", got %q",
+				pair.name, pair.val)
+		}
+	}
+	return nil
+}
+
+// validates content, ips, chains, options, etc. of supplied configfile
+func validateConfig(cfg *Config) error {
+
+	// apply safe defaults if unset policy values
+	sanitizePolicyDefaults(&cfg.Chains.Policy)
+
+	// reject invalid policy values
+	if err := validatePolicy(&cfg.Chains.Policy); err != nil {
+		return err
+	}
+
 	// core checks
 	if cfg.Core.Name == "" {
 		return fmt.Errorf("core.name is required")
@@ -178,7 +235,7 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("core.table is required")
 	}
 
-	// validate all address set entries are valid IPs or CIDRs
+	// validate all address-list entries are valid IPs or CIDRs
 	for name, set := range cfg.Sets.IPv4 {
 		for _, entry := range set.Entries {
 			if err := validateCIDR(entry); err != nil {
@@ -196,6 +253,13 @@ func validate(cfg *Config) error {
 
 	// validate rules
 	allRules := collectAllRules(cfg)
+
+	// define valid protocol options
+	validProtos := map[string]bool{"tcp": true, "udp": true, "icmp": true, "icmpv6": true}
+
+	// define valid action options
+	validActions := map[string]bool{"accept": true, "drop": true, "masquerade": true}
+
 	for _, rule := range allRules {
 		// validate src_set references point to sets that exist
 		if rule.SrcSet != "" {
@@ -217,23 +281,55 @@ func validate(cfg *Config) error {
 		if rule.SrcSet != "" && len(rule.SrcIPs) > 0 {
 			return fmt.Errorf("rule %q: cannot use both src_set and src_ips", rule.Comment)
 		}
+
+		// dport is only valid with tcp or udp
+		if len(rule.DPort) > 0 {
+			for _, proto := range rule.Protocol.Protocols {
+				if proto != "tcp" && proto != "udp" {
+					return fmt.Errorf("rule %q: dport is only valid with tcp or udp, got %q",
+						rule.Comment, proto)
+				}
+			}
+		}
+
+		// validate protocols are valid (eg: tcp/udp/icmp/icmpv6)
+		for _, proto := range rule.Protocol.Protocols {
+			if !validProtos[proto] {
+				return fmt.Errorf("rule %q: invalid protocol %q", rule.Comment, proto)
+			}
+		}
+
+		// validate action is valid (eg: accept/drop/masquerade)
+		if rule.Action == "" {
+			return fmt.Errorf("rule %q: action is required", rule.Comment)
+		}
+		if !validActions[rule.Action] {
+			return fmt.Errorf("rule %q: action must be accept, drop, or masquerade, got %q",
+				rule.Comment, rule.Action)
+		}
+
+		// if over_limit is set, ensure rate_limit is set as well
+		if rule.OverLimit != "" && rule.RateLimit == nil {
+			return fmt.Errorf("rule %q: over_limit requires rate_limit", rule.Comment)
+		}
+
 	}
 
 	return nil
 }
 
-func applyPolicyDefaults(p *ChainPolicy) {
-	if p.Input == "" {
-		p.Input = "drop"
+func sanitizePolicyDefaults(policy *ChainPolicy) {
+	if policy.Input == "" {
+		policy.Input = "drop"
 	}
-	if p.Forward == "" {
-		p.Forward = "drop"
+	if policy.Forward == "" {
+		policy.Forward = "drop"
 	}
-	if p.Output == "" {
-		p.Output = "accept"
+	if policy.Output == "" {
+		policy.Output = "accept"
 	}
-	if p.Postrouting == "" {
-		p.Postrouting = "accept"
+	if policy.Postrouting == "" {
+		policy.Postrouting = "accept"
 	}
 }
 

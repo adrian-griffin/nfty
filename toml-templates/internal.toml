@@ -1,5 +1,5 @@
 # nfty template — internal, for hosts on your private, home network
-# example is for pihole DNS + SNMP monitoring
+# example is for a machine running pihole DNS + SNMP monitoring
 # -------------------------------------------------------------------
 
 [core]
@@ -8,6 +8,11 @@
   table         = "nfty-default"
   docker_compat = true
   persist       = true
+  default_rules = true
+
+  icmpv4_limit  = "10/second"
+  icmpv6_limit  = "20/second"
+  log_ssh_fails = true
 
 # ---------------------------------------------------------------------------
 # Chain Policies — default action when no rule matches
@@ -22,16 +27,15 @@
   postrouting = "accept"   # accept is typical for postrouting
 
 # ---------------------------------------------------------------------------
-# IP Lists
+# IP Lists - Lists to group allowed IPs
 # ---------------------------------------------------------------------------
 
 # adjust the IPs and subnets in these lists for services you host, as needed
 
-[sets.ipv4.dns]
-  comment = "IPv4 DNS Allowlist - keep restricted"
+[sets.ipv4.ssh]
+  comment = "SSH Allowlist"
   entries = [
-    "10.100.1.0/24", # home subnet
-    "172.16.1.0/24", # vpn subnet
+    "10.100.1.5/32", # desktop pc
   ]
 
 [sets.ipv4.webui]
@@ -41,10 +45,11 @@
     "172.16.1.0/24", # vpn subnet
   ]
 
-[sets.ipv4.ssh]
-  comment = "SSH Allowlist"
+[sets.ipv4.dns]
+  comment = "IPv4 DNS Allowlist - keep restricted"
   entries = [
-    "10.100.1.5/32", # desktop pc
+    "10.100.1.0/24", # home subnet
+    "172.16.1.0/24", # vpn subnet
   ]
 
 [sets.ipv6.dns]
@@ -55,27 +60,8 @@
   ]
 
 # ---------------------------------------------------------------------------
-# INPUT — IPv4
+# INPUT - Traffic destined for this device
 # ---------------------------------------------------------------------------
-
-[[chains.ipv4.input]]
-  comment = "Allow loopback"
-  iif     = "lo"
-  action  = "accept"
-
-[[chains.ipv4.input]]
-  comment    = "ICMP/Ping rate limit"
-  protocol   = "icmp"
-  rate_limit = { rate = "10/second", action = "accept" }
-  over_limit = "drop"
-
-[[chains.ipv4.input]]
-  ct_state = ["established", "related"]
-  action   = "accept"
-
-[[chains.ipv4.input]]
-  ct_state = ["invalid"]
-  action   = "drop"
 
 [[chains.ipv4.input]]
   comment  = "Allowed SSH hosts"
@@ -85,13 +71,6 @@
   action   = "accept"
 
 [[chains.ipv4.input]]
-  comment  = "SSH — log unauthorized attempts"
-  protocol = "tcp"
-  dport    = [22]
-  log      = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
-  action   = "drop"
-
-[[chains.ipv4.input]]
   comment  = "Web HTTP/HTTPS"
   protocol = "tcp"
   dport    = [80, 443]
@@ -99,52 +78,15 @@
   action   = "accept"
 
 [[chains.ipv4.input]]
-  comment  = "DNS - TCP"
-  protocol = "tcp"
-  dport    = [53]
-  src_set  = "dns"
-  action   = "accept"
-
-[[chains.ipv4.input]]
-  comment  = "DNS - UDP"
-  protocol = "udp"
-  dport    = [53]
-  src_set  = "dns"
-  action   = "accept"
-
-# ---------------------------------------------------------------------------
-# INPUT — IPv6
-# ---------------------------------------------------------------------------
-
-[[chains.ipv6.input]]
-  comment = "Allow loopback"
-  iif     = "lo"
-  action  = "accept"
-
-[[chains.ipv6.input]]
-  comment    = "ICMPv6 rate limit - required for IPv6 to function"
-  protocol   = "icmpv6"
-  rate_limit = { rate = "20/second", action = "accept" }
-  over_limit = "drop"
-
-[[chains.ipv6.input]]
-  ct_state = ["established", "related"]
-  action   = "accept"
-
-[[chains.ipv6.input]]
-  ct_state = ["invalid"]
-  action   = "drop"
-
-[[chains.ipv6.input]]
-  comment  = "DNS IPv6 53/tcp - Please use caution if hosting a DNS server on IPv6"
-  protocol = "tcp"
+  comment  = "DNS"
+  protocol = ["tcp", "udp"]
   dport    = [53]
   src_set  = "dns"
   action   = "accept"
 
 [[chains.ipv6.input]]
-  comment  = "DNS IPv6 53/udp - Please use caution if hosting a DNS server on IPv6"
-  protocol = "udp"
+  comment  = "DNS IPv6 - Please use caution if hosting a DNS server on IPv6"
+  protocol = ["tcp", "udp"]
   dport    = [53]
   src_set  = "dns"
   action   = "accept"

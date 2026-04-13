@@ -8,77 +8,42 @@
   table         = "nfty-minimal"
   docker_compat = false
   persist       = true
+  default_rules = true
+
+  icmpv4_limit  = "10/second"
+  icmpv6_limit  = "20/second"
+  log_ssh_fails = true
 
 # ---------------------------------------------------------------------------
-# INPUT — IPv4
+# IP Lists - Lists to group allowed IPs
 # ---------------------------------------------------------------------------
 
-[[chains.ipv4.input]]
-  comment = "Allow loopback"
-  iif     = "lo"
-  action  = "accept"
+# adjust the IPs and subnets in these lists for services you host, as needed
 
-[[chains.ipv4.input]]
-  comment    = "ICMP/Ping rate limit"
-  protocol   = "icmp"
-  rate_limit = { rate = "10/second", action = "accept" }
-  over_limit = "drop"
-
-[[chains.ipv4.input]]
-  ct_state = ["established", "related"]
-  action   = "accept"
-
-[[chains.ipv4.input]]
-  ct_state = ["invalid"]
-  action   = "drop"
-
-[[chains.ipv4.input]]
-  comment  = "Allowed SSH hosts - EDIT"
-  protocol = "tcp"
-  dport    = [22]
-  src_ips  = [ 
-    "10.100.1.1/32", # pc 1
-    "10.100.1.2/32", # server 1
+[sets.ipv4.customlist]
+  comment = "Hosts allowed access to services"
+  entries = [
+    "10.100.1.0/24", # home subnet
     "172.16.1.0/24", # vpn subnet
-    ]
+  ]
+
+# ---------------------------------------------------------------------------
+# INPUT - Traffic destined for this device
+# ---------------------------------------------------------------------------
+
+[[chains.ipv4.input]]
+  comment  = "Allowed SSH hosts"
+  protocol = "tcp"
+  dport    = [22]
+  src_ips = [
+    "10.100.1.5/32",  # desktop pc
+    "10.100.1.10/32", # laptop
+  ]
   action   = "accept"
 
 [[chains.ipv4.input]]
-  comment  = "SSH — drop and log everything else"
-  protocol = "tcp"
-  dport    = [22]
-  log      = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
-  action   = "drop"
-
-[[chains.ipv4.input]]
-  comment  = "Allowed web server hosts"
+  comment  = "Web HTTP/HTTPS"
   protocol = "tcp"
   dport    = [80, 443]
-  src_ips  = [ 
-    "10.100.1.0/24", # lan
-    "172.16.1.0/24", # vpn subnet
-    ]
+  src_set  = "customlist"
   action   = "accept"
-
-# ---------------------------------------------------------------------------
-# INPUT — IPv6
-# ---------------------------------------------------------------------------
-
-[[chains.ipv6.input]]
-  comment = "Allow loopback"
-  iif     = "lo"
-  action  = "accept"
-
-[[chains.ipv6.input]]
-  comment    = "ICMPv6 — required for IPv6 to function"
-  protocol   = "icmpv6"
-  rate_limit = { rate = "10/second", action = "accept" }
-  over_limit = "drop"
-
-[[chains.ipv6.input]]
-  ct_state = ["established", "related"]
-  action   = "accept"
-
-[[chains.ipv6.input]]
-  ct_state = ["invalid"]
-  action   = "drop"

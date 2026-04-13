@@ -13,9 +13,15 @@ import (
 func main() {
 
 	// handle version flagging before any checks
-	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Printf("nfty  ~  version:%s\n", meta.Version)
-		os.Exit(0)
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version":
+			fmt.Printf("nfty  ~  version: %s\n", meta.Version)
+			os.Exit(0)
+		case "check":
+			runCheck(os.Args[2:])
+			os.Exit(0)
+		}
 	}
 
 	// validate running as root
@@ -41,14 +47,14 @@ func main() {
 	switch os.Args[1] {
 	case "apply":
 		runApply(os.Args[2:])
-	case "check":
-		runCheck(os.Args[2:])
 	case "status":
 		runStatus()
 	case "confirm":
-		// runConfirm()
+		fmt.Println("confirm not yet implemented")
 	case "rollback":
 		runRollback()
+	case "restore":
+		runRestore()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		printUsage()
@@ -122,7 +128,8 @@ func runCheck(args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("OK: %s (%s)\n", cfg.Core.Name, cfg.Core.Description)
+	fmt.Printf("Check OK\n")
+	fmt.Printf("Config Name: %s (%s)\n", cfg.Core.Name, cfg.Core.Description)
 	fmt.Printf("  table:         %s\n", cfg.Core.Table)
 	fmt.Printf("  docker_compat: %v\n", cfg.Core.DockerCompat)
 	fmt.Printf("  persist:       %v\n", cfg.Core.Persist)

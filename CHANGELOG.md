@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.0.7] - 2026-Apr-12
+- the name is bond, james bond
+- internal and minimal toml templates heavy overhauls
+    - `default_rules` and other bool vars for cutting boilerplate config
+    - toggle for logging blocked ssh attempts
+- chain policy validations & sanitization
+- allow array of protocols
+- multiple config validation improvements
+
 ## [0.0.6] - 2026-Apr-12
 - added chain policy .toml variables
 - config apply scaffolding
