@@ -32,19 +32,19 @@
 [sets.ipv4.snmp]
   comment = "SNMP monitoring allowlist"
   entries = [
-    "172.16.1.5/32",   # NMS server VPN address
+    "172.16.1.5/32", # NMS server VPN address
   ]
 
 [sets.ipv6.ssh]
   comment = "IPv6 SSH allowlist"
   entries = [
-    "2001:db8::/64",    # home ISP IPv6 prefix
+    "2001:db8::/64", # home ISP IPv6 prefix
   ]
 
 [sets.ipv6.wg_peers]
   comment = "IPv6 WireGuard peers"
   entries = [
-    "2001:db8::/60",    # replace with your prefix
+    "2001:db8::2/128", # home router ipv6
   ]
 
 # ---------------------------------------------------------------------------
@@ -71,30 +71,30 @@
   action   = "drop"
 
 [[chains.ipv4.input]]
-  comment = "SSH — allowlist only"
-  proto   = "tcp"
-  dport   = [22]
-  src_set = "ssh"
-  action  = "accept"
+  comment  = "SSH — allowlist only"
+  protocol = "tcp"
+  dport    = [22]
+  src_set  = "ssh"
+  action   = "accept"
 
 [[chains.ipv4.input]]
-  comment = "SSH — log and drop everything else"
-  proto   = "tcp"
-  dport   = [22]
-  log     = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
-  action  = "drop"
+  comment  = "SSH — log and drop everything else"
+  protocol = "tcp"
+  dport    = [22]
+  log      = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
+  action   = "drop"
 
 [[chains.ipv4.input]]
-  comment = "SNMP — monitoring host only"
-  proto   = "udp"
-  dport   = [161]
-  src_set = "snmp"
-  action  = "accept"
+  comment  = "SNMP — monitoring host only"
+  protocol = "udp"
+  dport    = [161]
+  src_set  = "snmp"
+  action   = "accept"
 
 [[chains.ipv4.input]]
   comment    = "HTTP/HTTPS new connections — rate limited"
   iifname    = "eth0"
-  proto      = "tcp"
+  protocol   = "tcp"
   dport      = [80, 443]
   ct_state   = ["new"]
   rate_limit = { rate = "20/second", burst = "50 packets", action = "accept" }
@@ -103,17 +103,17 @@
 [[chains.ipv4.input]]
   comment    = "HTTP/HTTPS established — rate limited"
   iifname    = "eth0"
-  proto      = "tcp"
+  protocol   = "tcp"
   dport      = [80, 443]
   rate_limit = { rate = "100/second", burst = "200 packets", action = "accept" }
   over_limit = "drop"
 
 [[chains.ipv4.input]]
-  comment = "WireGuard tunnel socket"
-  proto   = "udp"
-  dport   = [51820]
-  src_set = "wg_peers"
-  action  = "accept"
+  comment  = "WireGuard tunnel socket"
+  protocol = "udp"
+  dport    = [51820]
+  src_set  = "wg_peers"
+  action   = "accept"
 
 # ---------------------------------------------------------------------------
 # INPUT — IPv6
@@ -139,25 +139,25 @@
   action   = "drop"
 
 [[chains.ipv6.input]]
-  comment = "SSH IPv6 — allowlist only"
-  proto   = "tcp"
-  dport   = [22]
-  src_set = "ssh"
-  action  = "accept"
+  comment  = "SSH IPv6 — allowlist only"
+  protocol = "tcp"
+  dport    = [22]
+  src_set  = "ssh"
+  action   = "accept"
 
 [[chains.ipv6.input]]
-  comment = "SSH IPv6 — log and drop everything else"
-  proto   = "tcp"
-  dport   = [22]
-  log     = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
-  action  = "drop"
+  comment  = "SSH IPv6 — log and drop everything else"
+  protocol = "tcp"
+  dport    = [22]
+  log      = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
+  action   = "drop"
 
 [[chains.ipv6.input]]
-  comment = "WireGuard IPv6"
-  proto   = "udp"
-  dport   = [51820]
-  src_set = "wg_peers"
-  action  = "accept"
+  comment  = "WireGuard IPv6"
+  protocol = "udp"
+  dport    = [51820]
+  src_set  = "wg_peers"
+  action   = "accept"
 
 # ---------------------------------------------------------------------------
 # FORWARD — default drop, uncomment as needed

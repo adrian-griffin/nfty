@@ -33,32 +33,32 @@
   action   = "drop"
 
 [[chains.ipv4.input]]
-  comment = "Allowed SSH hosts - EDIT"
-  proto   = "tcp"
-  dport   = [22]
-  src_ips = [ 
+  comment  = "Allowed SSH hosts - EDIT"
+  protocol = "tcp"
+  dport    = [22]
+  src_ips  = [ 
     "10.100.1.1/32", # pc 1
     "10.100.1.2/32", # server 1
     "172.16.1.0/24", # vpn subnet
     ]
-  action  = "accept"
+  action   = "accept"
 
 [[chains.ipv4.input]]
-  comment = "SSH — drop and log everything else"
-  proto   = "tcp"
-  dport   = [22]
-  log     = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
-  action  = "drop"
+  comment  = "SSH — drop and log everything else"
+  protocol = "tcp"
+  dport    = [22]
+  log      = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
+  action   = "drop"
 
 [[chains.ipv4.input]]
-  comment = "Allowed web server hosts"
-  proto   = "tcp"
-  dport   = [80, 443]
-  src_ips = [ 
+  comment  = "Allowed web server hosts"
+  protocol = "tcp"
+  dport    = [80, 443]
+  src_ips  = [ 
     "10.100.1.0/24", # lan
     "172.16.1.0/24", # vpn subnet
     ]
-  action  = "accept"
+  action   = "accept"
 
 # ---------------------------------------------------------------------------
 # INPUT — IPv6

@@ -70,46 +70,46 @@
   action   = "drop"
 
 [[chains.ipv4.input]]
-  comment = "Allowed SSH hosts"
-  proto   = "tcp"
-  dport   = [22]
-  src_set = "ssh"
-  action  = "accept"
+  comment  = "Allowed SSH hosts"
+  protocol = "tcp"
+  dport    = [22]
+  src_set  = "ssh"
+  action   = "accept"
 
 [[chains.ipv4.input]]
-  comment = "SSH — log unauthorized attempts"
-  proto   = "tcp"
-  dport   = [22]
-  log     = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
-  action  = "drop"
+  comment  = "SSH — log unauthorized attempts"
+  protocol = "tcp"
+  dport    = [22]
+  log      = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
+  action   = "drop"
 
 [[chains.ipv4.input]]
-  comment = "Allowed SNMP hosts"
-  proto   = "udp"
-  dport   = [161]
-  src_set = "snmp"
-  action  = "accept"
+  comment  = "Allowed SNMP hosts"
+  protocol = "udp"
+  dport    = [161]
+  src_set  = "snmp"
+  action   = "accept"
 
 [[chains.ipv4.input]]
-  comment = "Web HTTP/HTTPS"
-  proto   = "tcp"
-  dport   = [80, 443]
-  src_set = "webui"
-  action  = "accept"
+  comment  = "Web HTTP/HTTPS"
+  protocol = "tcp"
+  dport    = [80, 443]
+  src_set  = "webui"
+  action   = "accept"
 
 [[chains.ipv4.input]]
-  comment = "DNS - TCP"
-  proto   = "tcp"
-  dport   = [53]
-  src_set = "dns"
-  action  = "accept"
+  comment  = "DNS - TCP"
+  protocol = "tcp"
+  dport    = [53]
+  src_set  = "dns"
+  action   = "accept"
 
 [[chains.ipv4.input]]
-  comment = "DNS - UDP"
-  proto   = "udp"
-  dport   = [53]
-  src_set = "dns"
-  action  = "accept"
+  comment  = "DNS - UDP"
+  protocol = "udp"
+  dport    = [53]
+  src_set  = "dns"
+  action   = "accept"
 
 # ---------------------------------------------------------------------------
 # INPUT — IPv6
@@ -135,14 +135,14 @@
   action   = "drop"
 
 [[chains.ipv6.input]]
-  comment = "DNS IPv6 - Please use caution if hosting a DNS server on IPv6"
-  proto   = "tcp"
-  dport   = [53]
-  src_set = "dns"
-  action  = "accept"
+  comment  = "DNS IPv6 - Please use caution if hosting a DNS server on IPv6"
+  protocol = "tcp"
+  dport    = [53]
+  src_set  = "dns"
+  action   = "accept"
 
 [[chains.ipv6.input]]
-  proto   = "udp"
-  dport   = [53]
-  src_set = "dns"
-  action  = "accept"
+  protocol = "udp"
+  dport    = [53]
+  src_set  = "dns"
+  action   = "accept"

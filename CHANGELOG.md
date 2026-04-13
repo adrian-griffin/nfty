@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+## [0.0.3] - 2026-Apr-12
+- init base structs for parsing toml configs
+- defined basic firewall rule structure
+- template tweaks
+
 
 ## [0.0.2] - 2026-Apr-12
 - Create example/template TOML files
