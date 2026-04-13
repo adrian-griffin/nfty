@@ -41,8 +41,17 @@ type AddressSet struct {
 
 // holds rules for both ip4 and ip6 chains
 type ChainConfig struct {
-	IPv4 FamilyChains `toml:"ipv4"`
-	IPv6 FamilyChains `toml:"ipv6"`
+	Policy ChainPolicy  `toml:"policy"`
+	IPv4   FamilyChains `toml:"ipv4"`
+	IPv6   FamilyChains `toml:"ipv6"`
+}
+
+// defines chain policies
+type ChainPolicy struct {
+	Input       string `toml:"input"`
+	Forward     string `toml:"forward"`
+	Output      string `toml:"output"`
+	Postrouting string `toml:"postrouting"`
 }
 
 // defines ip family chain object structure
@@ -211,6 +220,21 @@ func validate(cfg *Config) error {
 	}
 
 	return nil
+}
+
+func applyPolicyDefaults(p *ChainPolicy) {
+	if p.Input == "" {
+		p.Input = "drop"
+	}
+	if p.Forward == "" {
+		p.Forward = "drop"
+	}
+	if p.Output == "" {
+		p.Output = "accept"
+	}
+	if p.Postrouting == "" {
+		p.Postrouting = "accept"
+	}
 }
 
 // validate whether passed IP string is valid cidr or single-ip notation (ip4, ip6)

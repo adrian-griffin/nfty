@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.0.6] - 2026-Apr-12
+- added chain policy .toml variables
+- config apply scaffolding
+    - framework for sub-option flags
+    - dry run
+    - skip rollback
+    - commit confirm timeout
+- basic `check` option logic
+
 ## [0.0.5] - 2026-Apr-12
 - basic CLI flag parsing
 - init main.go

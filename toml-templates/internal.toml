@@ -10,8 +10,22 @@
   persist       = true
 
 # ---------------------------------------------------------------------------
+# Chain Policies — default action when no rule matches
+# ---------------------------------------------------------------------------
+
+# if you are unsure about these options, keep them default
+
+[chains.policy]
+  input       = "drop"     # drop is the sane default for input
+  forward     = "drop"     # drop unless you need routing/NAT
+  output      = "accept"   # accept is typical for output
+  postrouting = "accept"   # accept is typical for postrouting
+
+# ---------------------------------------------------------------------------
 # IP Lists
 # ---------------------------------------------------------------------------
+
+# adjust the IPs and subnets in these lists for services you host, as needed
 
 [sets.ipv4.dns]
   comment = "IPv4 DNS Allowlist - keep restricted"
@@ -21,7 +35,7 @@
   ]
 
 [sets.ipv4.webui]
-  comment = "IPv4 WebUI Server Allowlist"
+  comment = "IPv4 Web/HTTP Server Allowlist"
   entries = [
     "10.100.1.5/32", # desktop pc
     "172.16.1.0/24", # vpn subnet
@@ -31,12 +45,6 @@
   comment = "SSH Allowlist"
   entries = [
     "10.100.1.5/32", # desktop pc
-  ]
-
-[sets.ipv4.snmp]
-  comment = "SNMP Monitoring Allowlist"
-  entries = [
-    "10.100.2.2/28", # nms server
   ]
 
 [sets.ipv6.dns]
@@ -84,13 +92,6 @@
   action   = "drop"
 
 [[chains.ipv4.input]]
-  comment  = "Allowed SNMP hosts"
-  protocol = "udp"
-  dport    = [161]
-  src_set  = "snmp"
-  action   = "accept"
-
-[[chains.ipv4.input]]
   comment  = "Web HTTP/HTTPS"
   protocol = "tcp"
   dport    = [80, 443]
@@ -135,13 +136,14 @@
   action   = "drop"
 
 [[chains.ipv6.input]]
-  comment  = "DNS IPv6 - Please use caution if hosting a DNS server on IPv6"
+  comment  = "DNS IPv6 53/tcp - Please use caution if hosting a DNS server on IPv6"
   protocol = "tcp"
   dport    = [53]
   src_set  = "dns"
   action   = "accept"
 
 [[chains.ipv6.input]]
+  comment  = "DNS IPv6 53/udp - Please use caution if hosting a DNS server on IPv6"
   protocol = "udp"
   dport    = [53]
   src_set  = "dns"
