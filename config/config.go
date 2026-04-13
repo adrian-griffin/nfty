@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -56,6 +58,56 @@ type FamilyChains struct {
 type PortValue struct {
 	Start int
 	End   int
+}
+
+// returns final port-value object as string
+func (port PortValue) String() string {
+	if port.Start == port.End {
+		return strconv.Itoa(port.Start)
+	}
+	return fmt.Sprintf("%d-%d", port.Start, port.End)
+}
+
+// validates whether user-supplied port(s) are range or single-value
+func (port PortValue) IsSingle() bool {
+	return port.Start == port.End
+}
+
+// manual unmarshalling to catch various port ranges & lists
+func (port *PortValue) UnmarshalTOML(data interface{}) error {
+	switch value := data.(type) {
+	case int64:
+		if value < 1 || value > 65535 {
+			return fmt.Errorf("port %d out of range (1-65535)", value)
+		}
+		port.Start = int(value)
+		port.End = int(value)
+	case string:
+		parts := strings.SplitN(value, "-", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid port range %q, expected \"start-end\"", value)
+		}
+		// trim and convert start-port
+		start, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil {
+			return fmt.Errorf("invalid range start in %q: %w", value, err)
+		}
+		// trim and convert end-port
+		end, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil {
+			return fmt.Errorf("invalid range end in %q: %w", value, err)
+		}
+		// validate converted range limits
+		// and ensure proper port ordering
+		if start < 1 || end > 65535 || start > end {
+			return fmt.Errorf("invalid port range %d-%d", start, end)
+		}
+		port.Start = start
+		port.End = end
+	default:
+		return fmt.Errorf("dport value must be an integer or a \"start-end\" string, got %T", data)
+	}
+	return nil
 }
 
 // defines single rule entry, maps directly to nftables design
