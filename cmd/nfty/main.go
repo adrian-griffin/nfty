@@ -134,7 +134,7 @@ func runCheck(args []string) {
 	fmt.Printf("  docker_compat: %v\n", cfg.Core.DockerCompat)
 	fmt.Printf("  persist:       %v\n", cfg.Core.Persist)
 	fmt.Printf("  default_rules: %v\n", cfg.Core.DefaultRules)
-	fmt.Printf(" ")
+	fmt.Printf("\n")
 	fmt.Printf("  icmpv4_limit:  %v\n", cfg.Core.ICMPv4Limit)
 	fmt.Printf("  icmpv6_limit:  %v\n", cfg.Core.ICMPv6Limit)
 	fmt.Printf("  log_ssh_fails: %v\n", cfg.Core.LogSSHFails)
