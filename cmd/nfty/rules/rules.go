@@ -172,6 +172,7 @@ func buildSet(name string, set config.AddressSet, addrType string) string {
 	setOutput.WriteString(fmt.Sprintf("\n    set %s {\n", name))
 	setOutput.WriteString(fmt.Sprintf("        type %s\n", addrType))
 	setOutput.WriteString("        flags interval\n")
+	setOutput.WriteString("        auto-merge\n")
 
 	if set.Comment != "" {
 		setOutput.WriteString(fmt.Sprintf("        comment \"%s\"\n", "nfty: "+set.Comment))

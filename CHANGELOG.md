@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - topmost-level NFT config builder, generates full NFTables ruleset from `nfty` config
 - Generate/full config builder wired into `nfty check` for live machine testing of nfty → nftables configs
 - input flag sorter to allow more dynamic flag user inpts
+- nft `flags intervals` (cidr/subnetting) auto-merge functionality
 
 ## [0.0.9] - 2026-Apr-13
 - NFTables address-list/set conversion function
