@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.0.9] - 2026-Apr-13
+- NFTables address-list/set conversion function
+- NFT config output table builder
+
 ## [0.0.8] - 2026-Apr-13
 - basic structure for nfty → NFTables config generation
 - `default-rules` generation logic implemented (eg `established,related`, `drop: invalid`, etc)

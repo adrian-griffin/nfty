@@ -80,7 +80,7 @@ func buildDefaultForwards() []string {
 	}
 }
 
-// generates the SSH log+drop catch-all rules.
+// generates SSH log+drop ruleset
 func buildSSHLogRules(family string) []string {
 	return []string{
 		"        tcp dport 22 log prefix \"NFTY DROP 22/TCP: \" level warn comment \"nfty: SSH log\"",
@@ -135,6 +135,24 @@ func formatLog(log *config.LogConfig) string {
 		logContents += fmt.Sprintf(" level %s", log.Level)
 	}
 	return logContents
+}
+
+// creates named address-list groups of IPs/CIDRs
+func buildSet(name string, set config.AddressSet, addrType string) string {
+	var setOutput strings.Builder
+
+	setOutput.WriteString(fmt.Sprintf("\n    set %s {\n", name))
+	setOutput.WriteString(fmt.Sprintf("        type %s\n", addrType))
+	setOutput.WriteString("        flags interval\n")
+
+	if set.Comment != "" {
+		setOutput.WriteString(fmt.Sprintf("        comment \"%s\"\n", set.Comment))
+	}
+
+	setOutput.WriteString(fmt.Sprintf("        elements = { %s }\n", strings.Join(set.Entries, ", ")))
+	setOutput.WriteString("    }\n")
+
+	return setOutput.String()
 }
 
 // wraps a rule-list into a chain block with policy, type, hook, etc.
@@ -243,4 +261,66 @@ func buildMatchCriteria(rule config.Rule, proto string, family string) []string 
 	}
 
 	return parts
+}
+
+// constructs ip or ip6 NFTables table string
+// includes address-lists, auto-added rules, each chain, etc.
+func buildTable(family string, tableName string, sets map[string]config.AddressSet,
+	chains config.FamilyChains, policy config.ChainPolicy,
+	core config.CoreConfig) (string, error) {
+
+	var tableOutput strings.Builder
+
+	// nftables block starter
+	tableOutput.WriteString(fmt.Sprintf("table %s %s {\n", family, tableName))
+
+	// set proper address type based on supplied ip family
+	addrType := "ipv4_addr"
+	if family == "ipv6" {
+		addrType = "ipv6_addr"
+	}
+
+	// build address-list sets and write them to table output
+	for name, set := range sets {
+		tableOutput.WriteString(buildSet(name, set, addrType))
+	}
+
+	// set priority to 10 to not impede docker's auto-added rules
+	filterPrio := 0
+	if core.DockerCompat {
+		filterPrio = 10
+	}
+
+	// input chain rulebuilder
+	inputRules, err := buildChainRules(chains.Input, family, core, "input")
+	if err != nil {
+		return "", err
+	}
+	tableOutput.WriteString(buildChain("input", "filter", "input", filterPrio, policy.Input, inputRules))
+
+	// forward chain rulebuilder
+	fwdRules, err := buildChainRules(chains.Forward, family, core, "forward")
+	if err != nil {
+		return "", err
+	}
+	tableOutput.WriteString(buildChain("forward", "filter", "forward", filterPrio, policy.Forward, fwdRules))
+
+	// output chain rulebuilder
+	outRules, err := buildChainRules(chains.Output, family, core, "output")
+	if err != nil {
+		return "", err
+	}
+	tableOutput.WriteString(buildChain("output", "filter", "output", filterPrio, policy.Output, outRules))
+
+	// postrouting chain rulebuilder
+	// always priority 100
+	postRules, err := buildChainRules(chains.Postrouting, family, core, "postrouting")
+	if err != nil {
+		return "", err
+	}
+	tableOutput.WriteString(buildChain("postrouting", "nat", "postrouting", 100, policy.Postrouting, postRules))
+
+	// wrap up ip(6) table
+	tableOutput.WriteString("}\n")
+	return tableOutput.String(), nil
 }
