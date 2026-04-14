@@ -40,9 +40,9 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 		"        iif \"lo\" accept comment \"nfty: allow loopback\"")
 
 	// icmp and ratelimiting
-	icmpProto := "ipv4"
+	icmpProto := "icmp"
 	icmpLimit := core.ICMPv4Limit
-	if family == "ipv6" {
+	if family == "ip6" {
 		icmpProto = "icmpv6"
 		icmpLimit = core.ICMPv6Limit
 	}
@@ -77,7 +77,7 @@ func buildDefaultForwards() []string {
 }
 
 // generates SSH log+drop ruleset
-func buildSSHLogRules(family string) []string {
+func buildSSHLogRules() []string {
 	return []string{
 		"        tcp dport 22 log prefix \"NFTY DROP 22/TCP: \" level warn comment \"nfty: SSH log\"",
 		"        tcp dport 22 drop comment \"nfty: SSH drop\"",
@@ -104,7 +104,7 @@ func formatDPort(ports []config.PortValue) string {
 func formatSrcMatch(rule config.Rule, family string) string {
 	// determine rule ip-family prefix
 	prefix := "ip"
-	if family == "ipv6" {
+	if family == "ip6" {
 		prefix = "ip6"
 	}
 
@@ -142,7 +142,7 @@ func buildSet(name string, set config.AddressSet, addrType string) string {
 	setOutput.WriteString("        flags interval\n")
 
 	if set.Comment != "" {
-		setOutput.WriteString(fmt.Sprintf("        comment \"%s\"\n", set.Comment))
+		setOutput.WriteString(fmt.Sprintf("        comment \"%s\"\n", "nfty: "+set.Comment))
 	}
 
 	setOutput.WriteString(fmt.Sprintf("        elements = { %s }\n", strings.Join(set.Entries, ", ")))
@@ -198,7 +198,7 @@ func buildChainRules(userRules []config.Rule, family string,
 
 	// logging and other auto-generated rules at the end, possibly more to add later
 	if chainName == "input" && core.LogSSHFails {
-		lines = append(lines, buildSSHLogRules(family)...)
+		lines = append(lines, buildSSHLogRules()...)
 	}
 
 	return lines, nil
@@ -219,7 +219,7 @@ func buildRateLimitLines(matchParts []string, rule config.Rule) []string {
 	underParts := append([]string{}, matchParts...)
 	underParts = append(underParts, limitStr, rule.RateLimit.Action)
 	if rule.Comment != "" {
-		underParts = append(underParts, fmt.Sprintf("comment \"%s\"", rule.Comment))
+		underParts = append(underParts, fmt.Sprintf("comment \"%s\"", "nfty: "+rule.Comment))
 	}
 	lines = append(lines, "        "+strings.Join(underParts, " "))
 
@@ -244,8 +244,7 @@ func buildMatchCriteria(rule config.Rule, proto string, family string) []string 
 	// TODO: interace-name validations/in safety (?)
 	if rule.IIF != "" {
 		parts = append(parts, fmt.Sprintf("iif \"%s\"", rule.IIF))
-		fmt.Printf("iif verb used for interface matching, please use iifname instead,")
-		fmt.Printf("unless this is a loopback interface or you are aware of the limitations")
+		// TODO: move iif warning to safety package sanity-checking
 	}
 	if rule.IIFName != "" {
 		parts = append(parts, fmt.Sprintf("iifname \"%s\"", rule.IIFName))
@@ -301,7 +300,7 @@ func buildTable(family string, tableName string, sets map[string]config.AddressS
 
 	// set proper address type based on supplied ip family
 	addrType := "ipv4_addr"
-	if family == "ipv6" {
+	if family == "ip6" {
 		addrType = "ipv6_addr"
 	}
 
@@ -383,7 +382,7 @@ func buildRule(rule config.Rule, family string) ([]string, error) {
 
 		// add comment to every rule nfty writes for obvious reasons
 		if rule.Comment != "" {
-			parts = append(parts, fmt.Sprintf("comment \"%s\"", rule.Comment))
+			parts = append(parts, fmt.Sprintf("comment \"%s\"", "nfty: "+rule.Comment))
 		}
 
 		// merge all parts for return
