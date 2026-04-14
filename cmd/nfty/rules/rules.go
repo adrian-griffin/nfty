@@ -31,10 +31,6 @@ import (
 // |  log and extraneous rules
 // | EXTRA CHAINS
 
-// =============================================================================
-// DEFAULT RULE BUILDERS
-// =============================================================================
-
 // build out default input-chain rules
 func buildDefaultInputs(family string, core config.CoreConfig) []string {
 	var lines []string
@@ -208,6 +204,35 @@ func buildChainRules(userRules []config.Rule, family string,
 	return lines, nil
 }
 
+// builds ratelimiter config, splitting rule into two (accept up to LIMIT, drop else)
+func buildRateLimitLines(matchParts []string, rule config.Rule) []string {
+	var lines []string
+
+	// under-limit accept
+	limitStr := fmt.Sprintf("limit rate %s", rule.RateLimit.Rate)
+	if rule.RateLimit.Burst != "" {
+		limitStr += fmt.Sprintf(" burst %s", rule.RateLimit.Burst)
+	}
+
+	// copy match parts (don't modify the original slice) and append
+	// the rate limiter + action
+	underParts := append([]string{}, matchParts...)
+	underParts = append(underParts, limitStr, rule.RateLimit.Action)
+	if rule.Comment != "" {
+		underParts = append(underParts, fmt.Sprintf("comment \"%s\"", rule.Comment))
+	}
+	lines = append(lines, "        "+strings.Join(underParts, " "))
+
+	// over-limit handling
+	if rule.OverLimit != "" {
+		overParts := append([]string{}, matchParts...)
+		overParts = append(overParts, rule.OverLimit)
+		lines = append(lines, "        "+strings.Join(overParts, " "))
+	}
+
+	return lines
+}
+
 // builds out all the dynamic "matcher" portions of nft rules
 // <interface-match>     <socket/procol+port>    <src-address>   <conn state>
 // eg: ["iifname \"eth0\"", "tcp dport { 80, 443 }", "ip saddr @webui"]
@@ -323,4 +348,47 @@ func buildTable(family string, tableName string, sets map[string]config.AddressS
 	// wrap up ip(6) table
 	tableOutput.WriteString("}\n")
 	return tableOutput.String(), nil
+}
+
+// build full rule per protocol defined, with match criteria, actions, etc. written in
+func buildRule(rule config.Rule, family string) ([]string, error) {
+	var results []string
+
+	// parse protool array to accomodate tcp + udp rule definitions
+	protocols := rule.Protocol.Protocols
+	if len(protocols) == 0 {
+		protocols = []string{""}
+	}
+
+	// generate one nft rule per protocol
+	for _, proto := range protocols {
+
+		// build match portion of rule
+		// such as matching interface, protocol, src-address, etc.
+		parts := buildMatchCriteria(rule, proto, family)
+
+		// rlimit rules need to be split (1 rule in nfty = 2 rules in nftables)
+		if rule.RateLimit != nil {
+			results = append(results, buildRateLimitLines(parts, rule)...)
+			continue // skip the normal action/comment logic below
+		}
+
+		// if log rule hit is enaabled, format log prefix into nftables-syntax
+		if rule.Log != nil {
+			parts = append(parts, formatLog(rule.Log))
+		}
+
+		/// add speified action to rule parts
+		parts = append(parts, rule.Action)
+
+		// add comment to every rule nfty writes for obvious reasons
+		if rule.Comment != "" {
+			parts = append(parts, fmt.Sprintf("comment \"%s\"", rule.Comment))
+		}
+
+		// merge all parts for return
+		results = append(results, "        "+strings.Join(parts, " "))
+	}
+
+	return results, nil
 }
