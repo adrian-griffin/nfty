@@ -126,3 +126,66 @@ func formatSrcMatch(rule config.Rule, family string) string {
 	// if nada, return blank string which will be interpreted as 0.0.0.0/0 or 0:: on NFT
 	return ""
 }
+
+// build the nft log syntax from nfty config
+// eg: log prefix "NFTY DROP 22/TCP: " level warn
+func formatLog(log *config.LogConfig) string {
+	logContents := fmt.Sprintf("log prefix \"%s\"", log.Prefix)
+	if log.Level != "" {
+		logContents += fmt.Sprintf(" level %s", log.Level)
+	}
+	return logContents
+}
+
+// wraps a rule-list into a chain block with policy, type, hook, etc.
+func buildChain(name string, chainType string, hook string, priority int,
+	policy string, ruleLines []string) string {
+
+	var chainOutput strings.Builder
+
+	// write chain declaration contents to chain block buffer
+	chainOutput.WriteString(fmt.Sprintf("\n    chain %s {\n", name))
+	chainOutput.WriteString(fmt.Sprintf("        type %s hook %s priority %d; policy %s;\n",
+		chainType, hook, priority, policy))
+
+	// inject each rule line
+	for _, line := range ruleLines {
+		chainOutput.WriteString(line + "\n")
+	}
+
+	// wrap 'er up
+	chainOutput.WriteString("    }\n")
+	return chainOutput.String()
+}
+
+// combines default, user-supplied, and other auto-generated rules into proper order for placement into table
+func buildChainRules(userRules []config.Rule, family string,
+	core config.CoreConfig, chainName string) ([]string, error) {
+
+	var lines []string
+
+	// default rules first
+	if core.DefaultRules {
+		if chainName == "input" {
+			lines = append(lines, buildDefaultInputs(family, core)...)
+		} else if chainName == "forward" {
+			lines = append(lines, buildDefaultForwards()...)
+		}
+	}
+
+	// inject user-defined rules, splitting multi-protocol nfty config entries into multiple nftables lines
+	for _, rule := range userRules {
+		ruleLine, err := buildRule(rule, family) // stubbing
+		if err != nil {
+			return nil, fmt.Errorf("chain %s, rule %q: %w", chainName, rule.Comment, err)
+		}
+		lines = append(lines, ruleLine...)
+	}
+
+	// logging and other auto-generated rules at the end, possibly more to add later
+	if chainName == "input" && core.LogSSHFails {
+		lines = append(lines, buildSSHLogRules(family)...)
+	}
+
+	return lines, nil
+}
