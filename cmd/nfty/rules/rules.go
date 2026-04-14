@@ -189,3 +189,58 @@ func buildChainRules(userRules []config.Rule, family string,
 
 	return lines, nil
 }
+
+// builds out all the dynamic "matcher" portions of nft rules
+// <interface-match>     <socket/procol+port>    <src-address>   <conn state>
+// eg: ["iifname \"eth0\"", "tcp dport { 80, 443 }", "ip saddr @webui"]
+func buildMatchCriteria(rule config.Rule, proto string, family string) []string {
+	var parts []string
+
+	// interface name matching
+	// eventually need to add more robust validations here, possibly including collecting interface info from machine
+	// TODO: interace-name validations/in safety (?)
+	if rule.IIF != "" {
+		parts = append(parts, fmt.Sprintf("iif \"%s\"", rule.IIF))
+		fmt.Printf("iif verb used for interface matching, please use iifname instead,")
+		fmt.Printf("unless this is a loopback interface or you are aware of the limitations")
+	}
+	if rule.IIFName != "" {
+		parts = append(parts, fmt.Sprintf("iifname \"%s\"", rule.IIFName))
+	}
+	if rule.OIFName != "" {
+		parts = append(parts, fmt.Sprintf("oifname \"%s\"", rule.OIFName))
+	}
+
+	// dport socket mapping
+	// if tcp/udp, build <proto> dport
+	if proto == "tcp" || proto == "udp" {
+		if len(rule.DPort) > 0 {
+			// "tcp dport 22" or "udp dport { 53, 5353 }"
+			parts = append(parts, fmt.Sprintf("%s dport %s", proto, formatDPort(rule.DPort)))
+		} else {
+			// "meta l4proto tcp" — match protocol without port constraint
+			parts = append(parts, fmt.Sprintf("meta l4proto %s", proto))
+		}
+		// or if icmp/icmp6, do `meta l4` writing
+	} else if proto == "icmp" || proto == "icmpv6" {
+		// "meta l4proto icmp" or "meta l4proto icmpv6"
+		parts = append(parts, fmt.Sprintf("meta l4proto %s", proto))
+	}
+	// currently, if proto is "", skip protocol matching entirely
+
+	// TODO: add source port logic
+
+	// src address wrangling
+	// either named address-list (@ssh) or array of ips ({10.0.0.1, 10.0.0.2})
+	src := formatSrcMatch(rule, family)
+	if src != "" {
+		parts = append(parts, src)
+	}
+
+	// connection state writing
+	if len(rule.CtState) > 0 {
+		parts = append(parts, fmt.Sprintf("ct state %s", strings.Join(rule.CtState, ",")))
+	}
+
+	return parts
+}
