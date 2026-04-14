@@ -4,11 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.0.10] - 2026-Apr-13
+- topmost-level NFT config builder, generates full NFTables ruleset from `nfty` config
+- Generate/full config builder wired into `nfty check` for live machine testing of nfty → nftables configs
+
 ## [0.0.9] - 2026-Apr-13
 - NFTables address-list/set conversion function
 - NFT config output table builder
 - ratelimit rule splitter generator (1 nfty = 2 nftables)
 - rulebuilder that combines all lower-level rule tools to write fully-functional NFT-syntax rule
+- topmost-level NFT config builder, generates full NFTables ruleset from nfty config
+- traces on logic, minor ip family naming mismatches, minor bug & verbiage cleanup
 
 ## [0.0.8] - 2026-Apr-13
 - basic structure for nfty → NFTables config generation

@@ -31,6 +31,38 @@ import (
 // |  log and extraneous rules
 // | EXTRA CHAINS
 
+// generates full nftables ruleset as a string from a nfty config
+func Generate(cfg *config.Config) (string, error) {
+	var nftablesOutput strings.Builder
+
+	// shebang
+	nftablesOutput.WriteString("#!/usr/sbin/nft -f\n\n")
+
+	// atomic table cleanup, because nft is sketchy af
+	// always create table-name, then delete it to ensure a clean slate during rule application
+	nftablesOutput.WriteString(fmt.Sprintf("table ip %s\ndelete table ip %s\n", cfg.Core.Table, cfg.Core.Table))
+	nftablesOutput.WriteString(fmt.Sprintf("table ip6 %s\ndelete table ip6 %s\n\n", cfg.Core.Table, cfg.Core.Table))
+
+	// build ip4 table
+	ipv4Table, err := buildTable("ip", cfg.Core.Table, cfg.Sets.IPv4,
+		cfg.Chains.IPv4, cfg.Chains.Policy, cfg.Core)
+	if err != nil {
+		return "", fmt.Errorf("building ipv4 table: %w", err)
+	}
+	nftablesOutput.WriteString(ipv4Table)
+	nftablesOutput.WriteString("\n")
+
+	// build ip6 table
+	ipv6Table, err := buildTable("ip6", cfg.Core.Table, cfg.Sets.IPv6,
+		cfg.Chains.IPv6, cfg.Chains.Policy, cfg.Core)
+	if err != nil {
+		return "", fmt.Errorf("building ipv6 table: %w", err)
+	}
+	nftablesOutput.WriteString(ipv6Table)
+
+	return nftablesOutput.String(), nil
+}
+
 // build out default input-chain rules
 func buildDefaultInputs(family string, core config.CoreConfig) []string {
 	var lines []string

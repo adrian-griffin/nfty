@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/adrian-griffin/nfty/cmd/nfty/rules"
 	"github.com/adrian-griffin/nfty/config"
 	"github.com/adrian-griffin/nfty/meta"
 	"github.com/adrian-griffin/nfty/nft"
@@ -114,6 +115,18 @@ func runApply(args []string) {
 
 // validates a config file without applying
 func runCheck(args []string) {
+
+	// new flagset for check sub-opts
+	fs := flag.NewFlagSet("check", flag.ExitOnError)
+	listNFTRules := fs.Bool("list-ruleset", false, "print generated nftables script from nfty toml")
+	fs.Parse(args)
+
+	// if flag is ??, output usage help message
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: nfty check [--list-ruleset] <config.toml>")
+		os.Exit(1)
+	}
+
 	// if no path supplied, err
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "usage: nfty check <config.toml>")
@@ -155,6 +168,18 @@ func runCheck(args []string) {
 	// count sets
 	fmt.Printf("  ipv4 sets:     %d\n", len(cfg.Sets.IPv4))
 	fmt.Printf("  ipv6 sets:     %d\n", len(cfg.Sets.IPv6))
+
+	// if list-ruleset run, output spacer & generated NFTables config
+	if *listNFTRules {
+		fmt.Println("\n--- generated nftables script ---\n")
+		// perform nfty -> nftables conversion and print output script
+		script, err := rules.Generate(cfg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "rule generation failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Print(script)
+	}
 }
 
 // shows currently loaded nftables ruleset summary
