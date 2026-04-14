@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/adrian-griffin/nfty/cmd/nfty/rules"
 	"github.com/adrian-griffin/nfty/config"
@@ -65,6 +66,8 @@ func main() {
 
 // applies parsed config as active nftables ruleset
 func runApply(args []string) {
+	// sort args
+	args = sortFlags(args)
 	// define new flagset for apply sub-options
 	flagSet := flag.NewFlagSet("apply", flag.ExitOnError)
 	// sub-option flags for apply set
@@ -115,6 +118,8 @@ func runApply(args []string) {
 
 // validates a config file without applying
 func runCheck(args []string) {
+	// separate flags from positional args so order doesn't matter
+	args = sortFlags(args)
 
 	// new flagset for check sub-opts
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
@@ -127,14 +132,8 @@ func runCheck(args []string) {
 		os.Exit(1)
 	}
 
-	// if no path supplied, err
-	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: nfty check <config.toml>")
-		os.Exit(1)
-	}
-
 	// load config
-	configPath := args[0]
+	configPath := fs.Arg(0) // fixed to grab first non-flag arg, rather than raw first flag
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FAIL: %v\n", err)
@@ -216,8 +215,22 @@ func printUsage() {
 	fmt.Println("      --commit-confirm <seconds>     set rollback timer (default: 30)")
 	fmt.Println("      --skip-confirm                 skip rollback timer (dangerous)")
 	fmt.Println("  check <config.toml>              validate config, no changes")
+	fmt.Println("      --list-ruleset                 list NFT ruleset output")
 	fmt.Println("  status                           show current ruleset")
 	fmt.Println("  confirm                          confirm applied config")
 	fmt.Println("  rollback                         revert to previous rule snapshot")
 	fmt.Println("  version                          show version info")
+}
+
+// reorders flag args to allow dynamic flag inputs from user
+func sortFlags(args []string) []string {
+	var flags, positional []string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			flags = append(flags, arg)
+		} else {
+			positional = append(positional, arg)
+		}
+	}
+	return append(flags, positional...)
 }
