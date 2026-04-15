@@ -32,7 +32,8 @@ func CheckDir() error {
 
 // writes pre-nfty-apply NFT ruleset to rollback.nft for use in emergency
 func SaveRollbackSnapshot(currentRuleset []byte) error {
-	return os.WriteFile(RollbackFile, currentRuleset, 0600)
+	prependFlushRuleset := append([]byte("flush ruleset\n"), currentRuleset...)
+	return os.WriteFile(RollbackFile, prependFlushRuleset, 0600)
 }
 
 // reads the previiously-written rollback config for restoration

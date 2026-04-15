@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     - systemd timer creation
 - final rollback logic
 - `-dry-run` cleanup
+- flush ruleset on rollback fix
 
 ## [0.1.1] - 2026-Apr-14
 - commit.go package creation
