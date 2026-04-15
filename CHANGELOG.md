@@ -7,7 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [0.1.1] - 2026-Apr-14
 - commit.go package creation
 - rollback/snapshot capture bones
-- running confit & write/persistence bones
+- running-config & write/persistence bones
+- pending config logic+tracking for `nfty confirm` groundwork
 
 ## [0.1.0] - 2026-Apr-13
 - topmost-level NFT config builder, generates full NFTables ruleset from `nfty` config
