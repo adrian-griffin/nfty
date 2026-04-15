@@ -53,7 +53,7 @@ func main() {
 	case "status":
 		runStatus()
 	case "confirm":
-		fmt.Println("confirm not yet implemented")
+		runConfirm()
 	case "rollback":
 		runRollback()
 	case "rollback-if-pending":
