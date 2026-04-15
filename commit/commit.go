@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 )
 
@@ -12,6 +13,7 @@ const (
 	RollbackFile = "/var/nfty/rollback.nft"
 	RunningFile  = "/var/nfty/running.nft"
 	PendingFile  = "/var/nfty/pending.json"
+	TimerUnit    = "nfty-commit-confirm"
 )
 
 // struct for 'in-flight' config application that has yet to be `nfty confirm`
@@ -77,4 +79,49 @@ func WritePending(configPath string, deadlineSeconds int) error {
 func IsPending() bool {
 	_, err := os.Stat(PendingFile)
 	return err == nil
+}
+
+// reads/loads pending state file
+func LoadPending() (*PendingState, error) {
+	data, err := os.ReadFile(PendingFile)
+	if err != nil {
+		return nil, fmt.Errorf("reading pending state: %w", err)
+	}
+	var state PendingState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, fmt.Errorf("parsing pending state: %w", err)
+	}
+	return &state, nil
+}
+
+// remove pending.json file once confirmed/rolled back
+func ClearPending() error {
+	err := os.Remove(PendingFile)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+// create systemd timer for nfty rollback
+// if left to run for the full duration, runs `nfty rollback-if-pending`
+func ScheduleRollback(seconds int, nftyBinary string) error {
+	err := exec.Command("systemd-run",
+		"--on-active="+fmt.Sprintf("%ds", seconds),
+		"--unit="+TimerUnit,
+		"--description=nfty commit rollback timer",
+		nftyBinary, "rollback-if-pending",
+	).Run()
+	if err != nil {
+		return fmt.Errorf("scheduling rollback timer: %w", err)
+	}
+	return nil
+}
+
+// stops the pending rollback timer
+func CancelRollback() error {
+	// stop both the timer and the service unit systemd creates
+	exec.Command("systemctl", "stop", TimerUnit+".timer").Run()
+	exec.Command("systemctl", "stop", TimerUnit+".service").Run()
+	return nil
 }

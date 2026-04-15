@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/adrian-griffin/nfty/commit"
 	"github.com/adrian-griffin/nfty/config"
 	"github.com/adrian-griffin/nfty/meta"
 	"github.com/adrian-griffin/nfty/nft"
@@ -55,6 +56,8 @@ func main() {
 		fmt.Println("confirm not yet implemented")
 	case "rollback":
 		runRollback()
+	case "rollback-if-pending":
+		runRollbackIfPending()
 	case "restore":
 		runRestore()
 	default:
@@ -72,14 +75,20 @@ func runApply(args []string) {
 	flagSet := flag.NewFlagSet("apply", flag.ExitOnError)
 	// sub-option flags for apply set
 	dryRun := flagSet.Bool("dry-run", false, "show diffs, no changes")
-	// confirmTimer := flagSet.Bool("commit-confirm", false, "set auto-rollback if not confirmed")
-	noRollback := flagSet.Bool("skip-confirm", false, "skip automatic rollback (dangerous)")
+	skipConfirm := flagSet.Bool("skip-confirm", false, "skip automatic rollback (dangerous)")
+	confirmSeconds := flagSet.Int("commit-confirm", 30, "rollback timer in seconds (30s default)")
 	flagSet.Parse(args)
 
 	// if supplied .toml is empty err & exit
 	configPath := flagSet.Arg(0)
 	if configPath == "" {
-		fmt.Fprintln(os.Stderr, "usage: nfty apply [--dry-run] [--commit-confirm] [--skip-confirm] <config.toml>")
+		fmt.Fprintln(os.Stderr, "usage: nfty apply [--dry-run] [--skip-confirm] [--commit-confirm <seconds>] <config.toml>")
+		os.Exit(1)
+	}
+
+	// reject if theres already pending apply
+	if commit.IsPending() {
+		fmt.Fprintln(os.Stderr, "a pending apply already exists, run 'nfty confirm' or 'nfty rollback' first")
 		os.Exit(1)
 	}
 
@@ -93,13 +102,13 @@ func runApply(args []string) {
 	fmt.Printf("loaded config: %s (%s)\n", cfg.Core.Name, cfg.Core.Description)
 
 	// warn loudly for skip-confirms
-	if *noRollback {
+	if *skipConfirm {
 		fmt.Fprintln(os.Stderr, "WARNING: --skip-confirm disabled automatic rollback. if the ruleset is bad, you WILL be locked out")
 		// [TODO]: add `y` approval for pushing if skip-confirm is passed
 	}
 
 	if *dryRun {
-		fmt.Println("dry-run mode — no changes will be made")
+		fmt.Println("dry-run mode, no changes will be made")
 		// [TODO]: generate ruleset via rules package
 		// [TODO]: show diff against current ruleset
 		// [TODO]: run safety checks and display results
@@ -107,13 +116,109 @@ func runApply(args []string) {
 	}
 
 	// [TODO]: run safety checks (safety package)
-	// [TODO]: snapshot current ruleset for rollback
-	// [TODO]: generate nft script (rules package)
-	// [TODO]: validate via nft.ValidateScript()
-	// [TODO]: apply via nft.ApplyScript()
-	// [TODO]: start confirmation timer (default 30s)
-	// [TODO]: on confirm → persist to /var/nfty/active.nft
-	// [TODO]: on timeout → rollback from snapshot
+
+	// generate nft script
+	script, err := rules.Generate(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rule generation failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// validate script syntax with `nft --cf`
+	if err := nft.ValidateScript(script); err != nil {
+		fmt.Fprintf(os.Stderr, "nft syntax validation failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// end dry-run attempt here
+	if *dryRun {
+		fmt.Println("\ndry-run mode. no changes applied\n")
+		fmt.Println("--- generated nftables script ---\n")
+		fmt.Print(script)
+		os.Exit(0)
+	}
+
+	// ensure /var/nfty/ exists
+	if err := commit.CheckDir(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create nfty directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	// collect current ruleset for rollback config
+	currentRuleset, err := nft.ListRulesetScript()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to snapshot current ruleset: %v\n", err)
+		os.Exit(1)
+	}
+	// save current ruleset as snapshot to disk
+	if err := commit.SaveRollbackSnapshot(currentRuleset); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to save rollback snapshot: %v\n", err)
+		os.Exit(1)
+	}
+
+	// formally apply generated NFT config
+	if err := nft.ApplyScript(script); err != nil {
+		fmt.Fprintf(os.Stderr, "apply failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("ruleset applied successfully")
+
+	// skip-confirm: persist immediately, no timer
+	if *skipConfirm {
+		fmt.Fprintln(os.Stderr, "WARNING: --skip-confirm used, automatic lockout prevention & rollback is disabled")
+		if cfg.Core.Persist {
+			if err := commit.SaveRunningRuleset(script); err != nil {
+				fmt.Fprintf(os.Stderr, "failed to persist ruleset: %v\n", err)
+			}
+		}
+		return
+	}
+
+	// write pending state to .json file on disk
+	if err := commit.WritePending(configPath, *confirmSeconds); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write pending state: %v\n", err)
+		os.Exit(1)
+	}
+
+	// schedule systemd rollback timer
+	nftyPath, _ := os.Executable()
+	if err := commit.ScheduleRollback(*confirmSeconds, nftyPath); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to schedule rollback timer: %v\n", err)
+		fmt.Fprintln(os.Stderr, "WARNING: auto-rollback is NOT active. please confirm or manually rollback") // maybe kill process?
+	}
+
+	fmt.Printf("\nrun 'nfty confirm' within %d seconds to approve changes\n", *confirmSeconds)
+	fmt.Println("if not confirmed (due to lockout, terminated ssh session, etc), firewall will revert to previous known good state")
+}
+
+// perform change-approval/confirmation logic
+func runConfirm() {
+	if !commit.IsPending() {
+		fmt.Println("there is nothing to confirm and no pending apply state")
+		return
+	}
+
+	state, err := commit.LoadPending()
+	if err == nil {
+		fmt.Printf("confirming application of: %s\n", state.ConfigPath)
+		fmt.Printf("applied by: %s at %s\n", state.AppliedBy, state.AppliedAt.Format("15:04:05"))
+	}
+
+	// cancel systemd execution timer
+	commit.CancelRollback()
+
+	// persist current ruleset for boot restore
+	currentRuleset, err := nft.ListRulesetScript()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not read current ruleset for persistence: %v\n", err)
+	} else {
+		if err := commit.SaveRunningRuleset(string(currentRuleset)); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not apply ruleset to running configuration: %v\n", err)
+		}
+	}
+
+	commit.ClearPending()
+	fmt.Println("ruleset committed and confirmed")
 }
 
 // validates a config file without applying
