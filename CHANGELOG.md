@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.1.2] - 2026-Apr-14
+## [0.2.0] - 2026-Apr-14
 - systemd daemon timer for rollback logic
 - reading pending.json file for restore as needed
 - fleshing out `apply` logic, partway complete
@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - final rollback logic
 - `-dry-run` cleanup
 - flush ruleset on rollback fix
+- `nfty status` output overhaul
 
 ## [0.1.1] - 2026-Apr-14
 - commit.go package creation

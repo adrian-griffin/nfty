@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/adrian-griffin/nfty/commit"
 	"github.com/adrian-griffin/nfty/config"
@@ -301,14 +302,93 @@ func runCheck(args []string) {
 	}
 }
 
-// shows currently loaded nftables ruleset summary
+// build synopsis of nfty and NFTables rule states
 func runStatus() {
+	args := sortFlags(os.Args[2:])
+	fs := flag.NewFlagSet("status", flag.ExitOnError)
+	listRuleset := fs.Bool("list-ruleset", false, "show full nftables ruleset")
+	fs.Parse(args)
+
+	fmt.Println("nfty status")
+	fmt.Println()
+
+	// check if state is pending, display pending state info here
+	if commit.IsPending() {
+		state, err := commit.LoadPending()
+		if err == nil {
+			remaining := time.Until(state.Deadline).Round(time.Second)
+			fmt.Println("  PENDING APPLY — awaiting confirmation")
+			fmt.Printf("    config:    %s\n", state.ConfigPath)
+			fmt.Printf("    applied:   %s by %s\n", state.AppliedAt.Format("15:04:05"), state.AppliedBy)
+			if remaining > 0 {
+				fmt.Printf("    deadline:  %s remaining\n", remaining)
+			} else {
+				fmt.Printf("    deadline:  expired (rollback likely in progress)\n")
+			}
+			fmt.Println()
+		}
+	} else {
+		fmt.Println("no pending config changes")
+	}
+
+	// show file state
+	if _, err := os.Stat(commit.RunningFile); err == nil {
+		fmt.Println("  running.nft:  present")
+	} else {
+		fmt.Println("  running.nft:  not found")
+	}
+	if _, err := os.Stat(commit.RollbackFile); err == nil {
+		fmt.Println("  rollback.nft: present")
+	} else {
+		fmt.Println("  rollback.nft: not found")
+	}
+	fmt.Println()
+
+	// scrape live ruleset from nft
 	out, err := nft.ListRulesetScript()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "status failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "could not read nftables state: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Print(string(out))
+
+	ruleset := string(out)
+
+	// count tables, chains, rules from live output
+	tables, chains, ruleCount := countNftObjects(ruleset)
+	fmt.Printf("  live nftables: %d tables, %d chains, %d rules\n", tables, chains, ruleCount)
+
+	if *listRuleset {
+		fmt.Println("\n--- live nftables ruleset ---")
+		fmt.Print(ruleset)
+	}
+}
+
+// performs a rough count of tables, chains, and rules from raw nft
+func countNftObjects(ruleset string) (tables, chains, rules int) {
+	for _, line := range strings.Split(ruleset, "\n") {
+		trimmed := strings.TrimSpace(line)
+		// every hit of 'table' is probably a table
+		if strings.HasPrefix(trimmed, "table ") {
+			tables++
+			// likewise with chain
+		} else if strings.HasPrefix(trimmed, "chain ") {
+			chains++
+		} else if trimmed != "" &&
+			// everything else, so long as it doesnt include these
+			// keywords, is probably a rule
+			!strings.HasPrefix(trimmed, "}") &&
+			!strings.HasPrefix(trimmed, "type ") &&
+			!strings.HasPrefix(trimmed, "set ") &&
+			!strings.HasPrefix(trimmed, "elements") &&
+			!strings.HasPrefix(trimmed, "flags ") &&
+			!strings.HasPrefix(trimmed, "auto-merge") &&
+			!strings.HasPrefix(trimmed, "comment ") &&
+			!strings.HasPrefix(trimmed, "table ") &&
+			!strings.HasPrefix(trimmed, "chain ") {
+			rules++
+		}
+	}
+	return
 }
 
 // grabs previous snapshot and applies it
