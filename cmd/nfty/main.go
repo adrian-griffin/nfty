@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/adrian-griffin/nfty/cmd/nfty/rules"
 	"github.com/adrian-griffin/nfty/config"
 	"github.com/adrian-griffin/nfty/meta"
 	"github.com/adrian-griffin/nfty/nft"
+	"github.com/adrian-griffin/nfty/rules"
 )
 
 func main() {
