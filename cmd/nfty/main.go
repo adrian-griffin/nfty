@@ -107,14 +107,6 @@ func runApply(args []string) {
 		// [TODO]: add `y` approval for pushing if skip-confirm is passed
 	}
 
-	if *dryRun {
-		fmt.Println("dry-run mode, no changes will be made")
-		// [TODO]: generate ruleset via rules package
-		// [TODO]: show diff against current ruleset
-		// [TODO]: run safety checks and display results
-		os.Exit(0)
-	}
-
 	// [TODO]: run safety checks (safety package)
 
 	// generate nft script
@@ -132,8 +124,8 @@ func runApply(args []string) {
 
 	// end dry-run attempt here
 	if *dryRun {
-		fmt.Println("\ndry-run mode. no changes applied\n")
-		fmt.Println("--- generated nftables script ---\n")
+		fmt.Println("\ndry-run mode. no changes applied")
+		fmt.Println("--- generated nftables script ---")
 		fmt.Print(script)
 		os.Exit(0)
 	}
@@ -221,6 +213,29 @@ func runConfirm() {
 	fmt.Println("ruleset committed and confirmed")
 }
 
+// perform rollback functionality if pending state is detected
+func runRollbackIfPending() {
+	if !commit.IsPending() {
+		return
+	}
+
+	fmt.Println("nfty: commit-confirm timed out, reverting firewall config to previous know good state")
+
+	snapshot, err := commit.LoadRollbackSnapshot()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rollback failed! could not load snapshot: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := nft.ApplyScript(snapshot); err != nil {
+		fmt.Fprintf(os.Stderr, "rollback failed! could not apply snapshot: %v\n", err)
+		os.Exit(1)
+	}
+
+	commit.ClearPending()
+	fmt.Println("nfty: restored previous ruleset")
+}
+
 // validates a config file without applying
 func runCheck(args []string) {
 	// separate flags from positional args so order doesn't matter
@@ -296,11 +311,26 @@ func runStatus() {
 	fmt.Print(string(out))
 }
 
-// manually rolls back to the last snapshot
+// grabs previous snapshot and applies it
 func runRollback() {
-	// [TODO]: read /var/nfty/rollback.nft
-	// [TODO]: apply snapshot via nft.ApplyScript()
-	fmt.Println("rollback not yet implemented")
+	snapshot, err := commit.LoadRollbackSnapshot()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rollback failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := nft.ApplyScript(snapshot); err != nil {
+		fmt.Fprintf(os.Stderr, "rollback apply failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// cleans pending and rollback states
+	if commit.IsPending() {
+		commit.CancelRollback()
+		commit.ClearPending()
+	}
+
+	fmt.Println("rolled back to previous ruleset")
 }
 
 // reapplies last known good ruleset (used by systemd on boot)

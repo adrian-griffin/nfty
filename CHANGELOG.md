@@ -8,9 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - systemd daemon timer for rollback logic
 - reading pending.json file for restore as needed
 - fleshing out `apply` logic, partway complete
-    - dry run and validation
     - ruleset snapshotting
     - systemd timer creation
+- final rollback logic
+- `-dry-run` cleanup
 
 ## [0.1.1] - 2026-Apr-14
 - commit.go package creation
