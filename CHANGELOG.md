@@ -4,7 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.0.10] - 2026-Apr-13
+## [0.1.1] - 2026-Apr-14
+- commit.go package creation
+- rollback/snapshot capture bones
+- running confit & write/persistence bones
+
+## [0.1.0] - 2026-Apr-13
 - topmost-level NFT config builder, generates full NFTables ruleset from `nfty` config
 - Generate/full config builder wired into `nfty check` for live machine testing of nfty → nftables configs
 - input flag sorter to allow more dynamic flag user inpts
