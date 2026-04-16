@@ -9,6 +9,7 @@ import (
 
 	"github.com/adrian-griffin/nfty/commit"
 	"github.com/adrian-griffin/nfty/config"
+	"github.com/adrian-griffin/nfty/counters"
 	"github.com/adrian-griffin/nfty/meta"
 	"github.com/adrian-griffin/nfty/nft"
 	"github.com/adrian-griffin/nfty/rules"
@@ -61,6 +62,8 @@ func main() {
 		runRollbackIfPending()
 	case "restore":
 		runRestore()
+	case "counters":
+		runCounters()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		printUsage()
@@ -361,6 +364,40 @@ func runStatus() {
 		fmt.Println("\n--- live nftables ruleset ---")
 		fmt.Print(ruleset)
 	}
+}
+
+// runs counters parsing and displays output
+func runCounters() {
+	counts, err := counters.ParseCounters()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to read counters: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(counts) == 0 {
+		fmt.Println("no nfty counters found, try re-applying nfty config")
+		return
+	}
+
+	// group by ip family in display
+	currentFamily := ""
+	fmt.Printf("\n  %-50s %12s %10s\n", "RULE", "PACKETS", "BYTES")
+	fmt.Printf("  %-50s %12s %10s\n", strings.Repeat("-", 50), strings.Repeat("-", 12), strings.Repeat("-", 10))
+
+	for _, c := range counts {
+		// print family/chain header when it changes
+		familyChain := c.Family + " " + c.Chain
+		if familyChain != currentFamily {
+			fmt.Printf("\n  [%s/%s]\n", c.Family, c.Chain)
+			currentFamily = familyChain
+		}
+
+		fmt.Printf("  %-50s %12s %10s\n",
+			c.Comment,
+			counters.FormatPackets(c.Packets),
+			counters.FormatBytes(c.Bytes))
+	}
+	fmt.Println()
 }
 
 // performs a rough count of tables, chains, and rules from raw nft

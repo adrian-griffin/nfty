@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.2.1] - 2026-Apr-15
 - nftables counter write functionality
+- counters cli argument/opton
+- nftables counters parsing and display output
 
 ## [0.2.0] - 2026-Apr-14
 - systemd daemon timer for rollback logic
