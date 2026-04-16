@@ -388,7 +388,7 @@ func runCounters() {
 		// print family/chain header when it changes
 		familyChain := c.Family + " " + c.Chain
 		if familyChain != currentFamily {
-			fmt.Printf("\n  [%s/%s]\n", c.Family, c.Chain)
+			fmt.Printf("\n [%s/%s]\n", c.Family, c.Chain)
 			currentFamily = familyChain
 		}
 
