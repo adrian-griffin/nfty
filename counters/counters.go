@@ -49,17 +49,17 @@ func ParseCounters() ([]RuleCounter, error) {
 
 		// parse the rule object
 		var rule struct {
-			Family string            `json:"family"`
-			Table  string            `json:"table"`
-			Chain  string            `json:"chain"`
-			Expr   []json.RawMessage `json:"expr"`
+			Family  string            `json:"family"`
+			Table   string            `json:"table"`
+			Chain   string            `json:"chain"`
+			Expr    []json.RawMessage `json:"expr"`
+			Comment string            `json:"comment"`
 		}
 		if err := json.Unmarshal(ruleRaw, &rule); err != nil {
 			continue
 		}
 
 		// look for comment and counter
-		var comment string
 		var packets, bytes uint64
 		hasCounter := false
 
@@ -67,11 +67,6 @@ func ParseCounters() ([]RuleCounter, error) {
 			var expr map[string]json.RawMessage
 			if err := json.Unmarshal(exprRaw, &expr); err != nil {
 				continue
-			}
-
-			// check for comment
-			if commentRaw, hit := expr["comment"]; hit {
-				json.Unmarshal(commentRaw, &comment)
 			}
 
 			// check for counter
@@ -89,9 +84,9 @@ func ParseCounters() ([]RuleCounter, error) {
 		}
 
 		// append rules with nfty comments and counters
-		if hasCounter && len(comment) > 0 {
+		if hasCounter && len(rule.Comment) > 0 {
 			counters = append(counters, RuleCounter{
-				Comment: comment,
+				Comment: rule.Comment,
 				Packets: packets,
 				Bytes:   bytes,
 				Chain:   rule.Chain,

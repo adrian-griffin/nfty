@@ -470,6 +470,7 @@ func printUsage() {
 	fmt.Println("      --list-ruleset                 list NFT ruleset output")
 	fmt.Println("  status                           show current ruleset")
 	fmt.Println("  confirm                          confirm applied config")
+	fmt.Println("  counters                         display counters/statistics")
 	fmt.Println("  rollback                         revert to previous rule snapshot")
 	fmt.Println("  version                          show version info")
 }
