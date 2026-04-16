@@ -313,6 +313,11 @@ func validateConfig(cfg *Config) error {
 			return fmt.Errorf("rule %q: over_limit requires rate_limit", rule.Comment)
 		}
 
+		// dport requires a protocol
+		if len(rule.DPort) > 0 && len(rule.Protocol.Protocols) == 0 {
+			return fmt.Errorf("rule %q: dport requires a protocol (tcp or udp)", rule.Comment)
+		}
+
 	}
 
 	return nil
