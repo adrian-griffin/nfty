@@ -317,7 +317,7 @@ func runStatus() {
 		state, err := commit.LoadPending()
 		if err == nil {
 			remaining := time.Until(state.Deadline).Round(time.Second)
-			fmt.Println("  PENDING APPLY — awaiting confirmation")
+			fmt.Println("  ▲ PENDING APPLY — awaiting confirmation")
 			fmt.Printf("    config:    %s\n", state.ConfigPath)
 			fmt.Printf("    applied:   %s by %s\n", state.AppliedAt.Format("15:04:05"), state.AppliedBy)
 			if remaining > 0 {
