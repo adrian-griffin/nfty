@@ -69,7 +69,7 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 
 	// loopback
 	lines = append(lines,
-		"        iif \"lo\" accept comment \"nfty: allow loopback\"")
+		"        iif \"lo\" counter accept comment \"nfty: allow loopback\"")
 
 	// icmp and ratelimiting
 	icmpProto := "icmp"
@@ -82,20 +82,20 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 	// handle if user-passed icmp limit(s) are empty
 	if icmpLimit != "" {
 		lines = append(lines,
-			fmt.Sprintf("        meta l4proto %s limit rate %s accept comment \"nfty: %s rate limit\"",
+			fmt.Sprintf("        meta l4proto %s limit rate %s counter accept comment \"nfty: %s rate limit\"",
 				icmpProto, icmpLimit, icmpProto))
 
 		lines = append(lines,
-			fmt.Sprintf("        meta l4proto %s drop comment \"nfty: %s over limit\"",
+			fmt.Sprintf("        meta l4proto %s counter drop comment \"nfty: %s over limit\"",
 				icmpProto, icmpProto))
 	}
 
 	// established, related input
 	lines = append(lines,
-		"        ct state established,related accept comment \"nfty: allow established\"")
+		"        ct state established,related counter accept comment \"nfty: allow established\"")
 	// drop invalids
 	lines = append(lines,
-		"        ct state invalid drop comment \"nfty: drop invalid\"")
+		"        ct state invalid counter drop comment \"nfty: drop invalid\"")
 
 	return lines
 }
@@ -103,16 +103,16 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 // build out default forward-chain rules
 func buildDefaultForwards() []string {
 	return []string{
-		"        ct state established,related accept comment \"nfty: allow established\"",
-		"        ct state invalid drop comment \"nfty: drop invalid\"",
+		"        ct state established,related counter accept comment \"nfty: allow established\"",
+		"        ct state invalid counter drop comment \"nfty: drop invalid\"",
 	}
 }
 
 // generates SSH log+drop ruleset
 func buildSSHLogRules() []string {
 	return []string{
-		"        tcp dport 22 log prefix \"NFTY DROP 22/TCP: \" level warn comment \"nfty: SSH log\"",
-		"        tcp dport 22 drop comment \"nfty: SSH drop\"",
+		"        tcp dport 22 counter log prefix \"NFTY DROP 22/TCP: \" level warn comment \"nfty: SSH log\"",
+		"        tcp dport 22 counter drop comment \"nfty: SSH drop\"",
 	}
 }
 
@@ -250,7 +250,7 @@ func buildRateLimitLines(matchParts []string, rule config.Rule) []string {
 	// copy match parts (don't modify the original slice) and append
 	// the rate limiter + action
 	underParts := append([]string{}, matchParts...)
-	underParts = append(underParts, limitStr, rule.RateLimit.Action)
+	underParts = append(underParts, limitStr, "counter", rule.RateLimit.Action)
 	if rule.Comment != "" {
 		underParts = append(underParts, fmt.Sprintf("comment \"%s\"", "nfty: "+rule.Comment))
 	}
@@ -259,7 +259,7 @@ func buildRateLimitLines(matchParts []string, rule config.Rule) []string {
 	// over-limit handling
 	if rule.OverLimit != "" {
 		overParts := append([]string{}, matchParts...)
-		overParts = append(overParts, rule.OverLimit)
+		overParts = append(overParts, "counter", rule.OverLimit)
 		lines = append(lines, "        "+strings.Join(overParts, " "))
 	}
 
@@ -410,7 +410,10 @@ func buildRule(rule config.Rule, family string) ([]string, error) {
 			parts = append(parts, formatLog(rule.Log))
 		}
 
-		/// add speified action to rule parts
+		// add counter tag to each rule
+		parts = append(parts, "counter")
+
+		/// add specified action to rule
 		parts = append(parts, rule.Action)
 
 		// add comment to every rule nfty writes for obvious reasons

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.1] - 2026-Apr-15
+- nftables counter write functionality
+
 ## [0.2.0] - 2026-Apr-14
 - systemd daemon timer for rollback logic
 - reading pending.json file for restore as needed
