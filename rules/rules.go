@@ -123,7 +123,7 @@ func formatDPort(ports []config.PortValue) string {
 		return ports[0].String()
 	}
 
-	// multiple ports/ranges — wrap in curly braces
+	// multiple ports/ranges - wrap in curly braces
 	strs := make([]string, len(ports))
 	for i, p := range ports {
 		strs[i] = p.String()
@@ -293,7 +293,7 @@ func buildMatchCriteria(rule config.Rule, proto string, family string) []string 
 			// "tcp dport 22" or "udp dport { 53, 5353 }"
 			parts = append(parts, fmt.Sprintf("%s dport %s", proto, formatDPort(rule.DPort)))
 		} else {
-			// "meta l4proto tcp" — match protocol without port constraint
+			// "meta l4proto tcp" - match protocol without port constraint
 			parts = append(parts, fmt.Sprintf("meta l4proto %s", proto))
 		}
 		// or if icmp/icmp6, do `meta l4` writing

@@ -261,6 +261,59 @@ func validateConfig(cfg *Config) error {
 	validActions := map[string]bool{"accept": true, "drop": true, "masquerade": true}
 
 	for _, rule := range allRules {
+
+		// require comment cuz its used as in ID sort of
+		if rule.Comment == "" {
+			return fmt.Errorf("all rules require a comment")
+		}
+
+		// rate_limit.rate is required if rate_limit is set
+		if rule.RateLimit != nil {
+			if rule.RateLimit.Rate == "" {
+				return fmt.Errorf("rule %q: rate_limit.rate is required", rule.Comment)
+			}
+			if rule.RateLimit.Action == "" {
+				return fmt.Errorf("rule %q: rate_limit.action is required", rule.Comment)
+			}
+			// validate over_limit is drop or log if set
+			if rule.OverLimit != "" && rule.OverLimit != "drop" && rule.OverLimit != "log" {
+				return fmt.Errorf("rule %q: over_limit must be \"drop\" or \"log\", got %q",
+					rule.Comment, rule.OverLimit)
+			}
+		}
+
+		// connection state validation
+		validStates := map[string]bool{
+			"new": true, "established": true, "related": true, "invalid": true, "untracked": true,
+		}
+		for _, state := range rule.CtState {
+			if !validStates[state] {
+				return fmt.Errorf("rule %q: invalid ct_state %q", rule.Comment, state)
+			}
+		}
+
+		// ensure only iif OR iffname are used
+		if rule.IIF != "" && rule.IIFName != "" {
+			return fmt.Errorf("rule %q: cannot use both iif and iifname", rule.Comment)
+		}
+
+		// prevent empty src_set
+		if rule.SrcSet != "" {
+			if set, ok := cfg.Sets.IPv4[rule.SrcSet]; ok && len(set.Entries) == 0 {
+				return fmt.Errorf("rule %q: set %q exists but has no entries", rule.Comment, rule.SrcSet)
+			}
+			if set, ok := cfg.Sets.IPv6[rule.SrcSet]; ok && len(set.Entries) == 0 {
+				return fmt.Errorf("rule %q: set %q exists but has no entries", rule.Comment, rule.SrcSet)
+			}
+		}
+
+		// warn when a rule does not have any src-ip or in-interface matching (ie: open to all)
+		if len(rule.SrcIPs) == 0 && rule.SrcSet == "" && rule.IIF == "" && rule.IIFName == "" && len(rule.CtState) == 0 {
+			if len(rule.DPort) > 0 {
+				fmt.Fprintf(os.Stderr, "WARNING: Rule %q has dport but no source restriction (src_set, src_ips, iifname, etc), leaving it open to all addresses from all interfaces", rule.Comment)
+			}
+		}
+
 		// validate src_set references point to sets that exist
 		if rule.SrcSet != "" {
 			if _, ok := cfg.Sets.IPv4[rule.SrcSet]; !ok {

@@ -206,10 +206,10 @@ func runConfirm() {
 	// persist current ruleset for boot restore
 	currentRuleset, err := nft.ListRulesetScript()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not read current ruleset for persistence: %v\n", err)
+		fmt.Fprintf(os.Stderr, "WARNING: could not read current ruleset for persistence: %v\n", err)
 	} else {
 		if err := commit.SaveRunningRuleset(string(currentRuleset)); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not apply ruleset to running configuration: %v\n", err)
+			fmt.Fprintf(os.Stderr, "WARNING: could not apply ruleset to running configuration: %v\n", err)
 		}
 	}
 
@@ -320,7 +320,7 @@ func runStatus() {
 		state, err := commit.LoadPending()
 		if err == nil {
 			remaining := time.Until(state.Deadline).Round(time.Second)
-			fmt.Println("  ▲ PENDING APPLY — awaiting confirmation")
+			fmt.Println("  ▲ PENDING APPLY - awaiting confirmation")
 			fmt.Printf("    config:    %s\n", state.ConfigPath)
 			fmt.Printf("    applied:   %s by %s\n", state.AppliedAt.Format("15:04:05"), state.AppliedBy)
 			if remaining > 0 {

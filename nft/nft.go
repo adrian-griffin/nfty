@@ -11,7 +11,7 @@ import (
 func nftCall(args ...string) ([]byte, error) {
 	path, err := exec.LookPath("nft")
 	if err != nil {
-		return nil, fmt.Errorf("nft not found — is nftables installed?")
+		return nil, fmt.Errorf("nft not found - is nftables installed?")
 	}
 
 	cmd := exec.Command(path, args...)
