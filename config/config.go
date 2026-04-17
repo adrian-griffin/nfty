@@ -266,6 +266,10 @@ func validateConfig(cfg *Config) error {
 		if rule.Comment == "" {
 			return fmt.Errorf("all rules require a comment")
 		}
+		// no double quotes that can escape str
+		if strings.ContainsAny(rule.Comment, "\"\\") {
+			return fmt.Errorf("rule %q: comment must not contain quotes or backslashes", rule.Comment)
+		}
 
 		// rate_limit.rate is required if rate_limit is set
 		if rule.RateLimit != nil {
@@ -310,7 +314,7 @@ func validateConfig(cfg *Config) error {
 		// warn when a rule does not have any src-ip or in-interface matching (ie: open to all)
 		if len(rule.SrcIPs) == 0 && rule.SrcSet == "" && rule.IIF == "" && rule.IIFName == "" && len(rule.CtState) == 0 {
 			if len(rule.DPort) > 0 {
-				fmt.Fprintf(os.Stderr, "WARNING: Rule %q has dport but no source restriction (src_set, src_ips, iifname, etc), leaving it open to all addresses from all interfaces", rule.Comment)
+				fmt.Fprintf(os.Stderr, "WARNING: Rule %q has dport but no source restriction (src_set, src_ips, iifname, etc), leaving it open to all addresses from all interfaces\n", rule.Comment)
 			}
 		}
 
@@ -371,6 +375,22 @@ func validateConfig(cfg *Config) error {
 			return fmt.Errorf("rule %q: dport requires a protocol (tcp or udp)", rule.Comment)
 		}
 
+	}
+
+	// check user-supplied names for special chars
+	for name := range cfg.Sets.IPv4 {
+		if strings.ContainsAny(name, " \t\"\\@{}()") {
+			return fmt.Errorf("sets.ipv4.%s: set name contains invalid characters", name)
+		}
+	}
+	for name := range cfg.Sets.IPv6 {
+		if strings.ContainsAny(name, " \t\"\\@{}()") {
+			return fmt.Errorf("sets.ipv6.%s: set name contains invalid characters", name)
+		}
+	}
+	// and table name
+	if strings.ContainsAny(cfg.Core.Table, " \t\"\\@{}()") {
+		return fmt.Errorf("core.table must not contain spaces")
 	}
 
 	return nil
