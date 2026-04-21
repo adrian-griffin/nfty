@@ -165,14 +165,14 @@ func formatDstMatch(rule config.Rule, family string) string {
 	}
 
 	// return NFTables config for named address-list/address set
-	if rule.SrcList != "" {
-		return fmt.Sprintf("%s daddr @%s", prefix, rule.SrcList)
+	if rule.DstList != "" {
+		return fmt.Sprintf("%s daddr @%s", prefix, rule.DstList)
 	}
 
 	// return NFTables config for raw srcIP list
 	// creates an anonymous set in the rule itself
-	if len(rule.SrcIPs) > 0 {
-		return fmt.Sprintf("%s daddr { %s }", prefix, strings.Join(rule.SrcIPs, ", "))
+	if len(rule.DstIPs) > 0 {
+		return fmt.Sprintf("%s daddr { %s }", prefix, strings.Join(rule.DstIPs, ", "))
 	}
 
 	// if nada, return blank string which will be interpreted as 0.0.0.0/0 or 0:: on NFT

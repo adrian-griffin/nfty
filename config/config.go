@@ -14,7 +14,7 @@ import (
 // top-level struct of parsed toml
 type Config struct {
 	Core   CoreConfig  `toml:"core"`
-	Lists  ListsConfig `toml:"Lists"`
+	Lists  ListsConfig `toml:"lists"`
 	Chains ChainConfig `toml:"chains"`
 }
 
@@ -358,13 +358,18 @@ func validateConfig(cfg *Config) error {
 		// validate dst_ips are valid cidr formatting
 		for _, ip := range rule.DstIPs {
 			if err := validateCIDR(ip); err != nil {
-				return fmt.Errorf("rule %q: invalid src_ips entry %q: %w", rule.Comment, ip, err)
+				return fmt.Errorf("rule %q: invalid dst_ips entry %q: %w", rule.Comment, ip, err)
 			}
 		}
 
 		// can't use both src_list and src_ips on the same rule
 		if rule.SrcList != "" && len(rule.SrcIPs) > 0 {
 			return fmt.Errorf("rule %q: cannot use both src_list and src_ips", rule.Comment)
+		}
+
+		// mutually exclusive dstlist/dstips
+		if rule.DstList != "" && len(rule.DstIPs) > 0 {
+			return fmt.Errorf("rule %q: cannot use both dst_list and dst_ips", rule.Comment)
 		}
 
 		// dport is only valid with tcp or udp protos
