@@ -1,4 +1,4 @@
-# nfty template — minimal, with sane defaults
+# nfty template - minimal, with sane defaults
 # good starting point for new nodes or if youre uncertain
 # -------------------------------------------------------------------
 
@@ -20,7 +20,7 @@
 
 # adjust the IPs and subnets in these lists for services you host, as needed
 
-[sets.ipv4.customlist]
+[lists.ipv4.customlist]
   comment = "Hosts allowed access to services"
   entries = [
     "10.100.1.0/24", # home subnet

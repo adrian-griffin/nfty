@@ -44,7 +44,7 @@ func Generate(cfg *config.Config) (string, error) {
 	nftablesOutput.WriteString(fmt.Sprintf("table ip6 %s\ndelete table ip6 %s\n\n", cfg.Core.Table, cfg.Core.Table))
 
 	// build ip4 table
-	ipv4Table, err := buildTable("ip", cfg.Core.Table, cfg.Sets.IPv4,
+	ipv4Table, err := buildTable("ip", cfg.Core.Table, cfg.Lists.IPv4,
 		cfg.Chains.IPv4, cfg.Chains.Policy, cfg.Core)
 	if err != nil {
 		return "", fmt.Errorf("building ipv4 table: %w", err)
@@ -53,7 +53,7 @@ func Generate(cfg *config.Config) (string, error) {
 	nftablesOutput.WriteString("\n")
 
 	// build ip6 table
-	ipv6Table, err := buildTable("ip6", cfg.Core.Table, cfg.Sets.IPv6,
+	ipv6Table, err := buildTable("ip6", cfg.Core.Table, cfg.Lists.IPv6,
 		cfg.Chains.IPv6, cfg.Chains.Policy, cfg.Core)
 	if err != nil {
 		return "", fmt.Errorf("building ipv6 table: %w", err)
@@ -117,7 +117,7 @@ func buildSSHLogRules() []string {
 }
 
 // converts various dport formats (eg [22], [161-162], [443,80]) into NFTables-parsable syntax
-func formatDPort(ports []config.PortValue) string {
+func formatPort(ports []config.PortValue) string {
 	// if single port/range, no braces needed
 	if len(ports) == 1 {
 		return ports[0].String()
@@ -131,7 +131,7 @@ func formatDPort(ports []config.PortValue) string {
 	return "{ " + strings.Join(strs, ", ") + " }"
 }
 
-// converts address-list sets or lists (eg src_set = "ssh", src_ips = [...]) into NFTables-parsable syntax
+// converts address-list sets or lists (eg src_list = "ssh", src_ips = [...]) into NFTables-parsable syntax
 // returns empty str if neither is set (ie allow on all src-addresses at the firewall lvl for that socket)
 func formatSrcMatch(rule config.Rule, family string) string {
 	// determine rule ip-family prefix
@@ -141,14 +141,38 @@ func formatSrcMatch(rule config.Rule, family string) string {
 	}
 
 	// return NFTables config for named address-list/address set
-	if rule.SrcSet != "" {
-		return fmt.Sprintf("%s saddr @%s", prefix, rule.SrcSet)
+	if rule.SrcList != "" {
+		return fmt.Sprintf("%s saddr @%s", prefix, rule.SrcList)
 	}
 
 	// return NFTables config for raw srcIP list
 	// creates an anonymous set in the rule itself
 	if len(rule.SrcIPs) > 0 {
 		return fmt.Sprintf("%s saddr { %s }", prefix, strings.Join(rule.SrcIPs, ", "))
+	}
+
+	// if nada, return blank string which will be interpreted as 0.0.0.0/0 or 0:: on NFT
+	return ""
+}
+
+// converts address-list sets or lists (eg src_list = "ssh", src_ips = [...]) into NFTables-parsable syntax
+// returns empty str if neither is set (ie allow on all src-addresses at the firewall lvl for that socket)
+func formatDstMatch(rule config.Rule, family string) string {
+	// determine rule ip-family prefix
+	prefix := "ip"
+	if family == "ip6" {
+		prefix = "ip6"
+	}
+
+	// return NFTables config for named address-list/address set
+	if rule.SrcList != "" {
+		return fmt.Sprintf("%s daddr @%s", prefix, rule.SrcList)
+	}
+
+	// return NFTables config for raw srcIP list
+	// creates an anonymous set in the rule itself
+	if len(rule.SrcIPs) > 0 {
+		return fmt.Sprintf("%s daddr { %s }", prefix, strings.Join(rule.SrcIPs, ", "))
 	}
 
 	// if nada, return blank string which will be interpreted as 0.0.0.0/0 or 0:: on NFT
@@ -166,22 +190,22 @@ func formatLog(log *config.LogConfig) string {
 }
 
 // creates named address-list groups of IPs/CIDRs
-func buildSet(name string, set config.AddressSet, addrType string) string {
-	var setOutput strings.Builder
+func buildSet(name string, list config.AddressList, addrType string) string {
+	var listOutput strings.Builder
 
-	setOutput.WriteString(fmt.Sprintf("\n    set %s {\n", name))
-	setOutput.WriteString(fmt.Sprintf("        type %s\n", addrType))
-	setOutput.WriteString("        flags interval\n")
-	setOutput.WriteString("        auto-merge\n")
+	listOutput.WriteString(fmt.Sprintf("\n    set %s {\n", name))
+	listOutput.WriteString(fmt.Sprintf("        type %s\n", addrType))
+	listOutput.WriteString("        flags interval\n")
+	listOutput.WriteString("        auto-merge\n")
 
-	if set.Comment != "" {
-		setOutput.WriteString(fmt.Sprintf("        comment \"%s\"\n", "nfty: "+set.Comment))
+	if list.Comment != "" {
+		listOutput.WriteString(fmt.Sprintf("        comment \"%s\"\n", "nfty: "+list.Comment))
 	}
 
-	setOutput.WriteString(fmt.Sprintf("        elements = { %s }\n", strings.Join(set.Entries, ", ")))
-	setOutput.WriteString("    }\n")
+	listOutput.WriteString(fmt.Sprintf("        elements = { %s }\n", strings.Join(list.Entries, ", ")))
+	listOutput.WriteString("    }\n")
 
-	return setOutput.String()
+	return listOutput.String()
 }
 
 // wraps a rule-list into a chain block with policy, type, hook, etc.
@@ -291,7 +315,7 @@ func buildMatchCriteria(rule config.Rule, proto string, family string) []string 
 	if proto == "tcp" || proto == "udp" {
 		if len(rule.DPort) > 0 {
 			// "tcp dport 22" or "udp dport { 53, 5353 }"
-			parts = append(parts, fmt.Sprintf("%s dport %s", proto, formatDPort(rule.DPort)))
+			parts = append(parts, fmt.Sprintf("%s dport %s", proto, formatPort(rule.DPort)))
 		} else {
 			// "meta l4proto tcp" - match protocol without port constraint
 			parts = append(parts, fmt.Sprintf("meta l4proto %s", proto))
@@ -301,15 +325,27 @@ func buildMatchCriteria(rule config.Rule, proto string, family string) []string 
 		// "meta l4proto icmp" or "meta l4proto icmpv6"
 		parts = append(parts, fmt.Sprintf("meta l4proto %s", proto))
 	}
-	// currently, if proto is "", skip protocol matching entirely
+	// TODO: currently, if proto is "", skip protocol matching entirely
 
-	// TODO: add source port logic
+	// src port socket mapping
+	if proto == "tcp" || proto == "udp" {
+		if len(rule.SPort) > 0 {
+			parts = append(parts, fmt.Sprintf("%s sport %s", proto, formatPort(rule.SPort)))
+		}
+	}
 
 	// src address wrangling
 	// either named address-list (@ssh) or array of ips ({10.0.0.1, 10.0.0.2})
 	src := formatSrcMatch(rule, family)
 	if src != "" {
 		parts = append(parts, src)
+	}
+
+	// dst address handling
+	// likewise either named addylist or array of ips
+	dst := formatDstMatch(rule, family)
+	if dst != "" {
+		parts = append(parts, dst)
 	}
 
 	// connection state writing
@@ -322,7 +358,7 @@ func buildMatchCriteria(rule config.Rule, proto string, family string) []string 
 
 // constructs ip or ip6 NFTables table string
 // includes address-lists, auto-added rules, each chain, etc.
-func buildTable(family string, tableName string, sets map[string]config.AddressSet,
+func buildTable(family string, tableName string, lists map[string]config.AddressList,
 	chains config.FamilyChains, policy config.ChainPolicy,
 	core config.CoreConfig) (string, error) {
 
@@ -338,8 +374,8 @@ func buildTable(family string, tableName string, sets map[string]config.AddressS
 	}
 
 	// build address-list sets and write them to table output
-	for name, set := range sets {
-		tableOutput.WriteString(buildSet(name, set, addrType))
+	for name, list := range lists {
+		tableOutput.WriteString(buildSet(name, list, addrType))
 	}
 
 	// set priority to 10 to not impede docker's auto-added rules

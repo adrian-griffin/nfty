@@ -14,7 +14,7 @@ import (
 // top-level struct of parsed toml
 type Config struct {
 	Core   CoreConfig  `toml:"core"`
-	Sets   SetsConfig  `toml:"sets"`
+	Lists  ListsConfig `toml:"Lists"`
 	Chains ChainConfig `toml:"chains"`
 }
 
@@ -31,14 +31,14 @@ type CoreConfig struct {
 	LogSSHFails  bool   `toml:"log_ssh_fails"`
 }
 
-// sub-config struct of parsed ip4 and ip6 sets
-type SetsConfig struct {
-	IPv4 map[string]AddressSet `toml:"ipv4"`
-	IPv6 map[string]AddressSet `toml:"ipv6"`
+// sub-config struct of parsed ip4 and ip6 Lists
+type ListsConfig struct {
+	IPv4 map[string]AddressList `toml:"ipv4"`
+	IPv6 map[string]AddressList `toml:"ipv6"`
 }
 
 // sub-config struct for address set objects
-type AddressSet struct {
+type AddressList struct {
 	Comment string   `toml:"comment"`
 	Entries []string `toml:"entries"`
 }
@@ -155,13 +155,16 @@ type Rule struct {
 	OIFName   string      `toml:"oifname"`  // outbound interface name match
 	Protocol  ProtoValue  `toml:"protocol"` // icmp, icmpv6, tcp, udp
 	DPort     []PortValue `toml:"dport"`    // destination port(s) or ranges
-	SrcSet    string      `toml:"src_set"`  // reference to a named address set
-	SrcIPs    []string    `toml:"src_ips"`  // inline source IPs/CIDRs (alternative to src_set)
+	SrcList   string      `toml:"src_list"` // reference to a named address set
+	SrcIPs    []string    `toml:"src_ips"`  // inline source IPs/CIDRs (alternative to src_list)
 	CtState   []string    `toml:"ct_state"` // conntrack states
 	RateLimit *RateLimit  `toml:"rate_limit"`
 	OverLimit string      `toml:"over_limit"` // action when rate exceeded: drop/log
 	Log       *LogConfig  `toml:"log"`
 	Action    string      `toml:"action"` // accept, drop, masquerade
+	DstList   string      `toml:"dst_list"`
+	DstIPs    []string    `toml:"dst_ips"`
+	SPort     []PortValue `toml:"sport"`
 }
 
 // define rate-limiter objects
@@ -236,17 +239,17 @@ func validateConfig(cfg *Config) error {
 	}
 
 	// validate all address-list entries are valid IPs or CIDRs
-	for name, set := range cfg.Sets.IPv4 {
-		for _, entry := range set.Entries {
+	for name, list := range cfg.Lists.IPv4 {
+		for _, entry := range list.Entries {
 			if err := validateCIDR(entry); err != nil {
-				return fmt.Errorf("sets.ipv4.%s: invalid entry %q: %w", name, entry, err)
+				return fmt.Errorf("Lists.ipv4.%s: invalid entry %q: %w", name, entry, err)
 			}
 		}
 	}
-	for name, set := range cfg.Sets.IPv6 {
-		for _, entry := range set.Entries {
+	for name, list := range cfg.Lists.IPv6 {
+		for _, entry := range list.Entries {
 			if err := validateCIDR(entry); err != nil {
-				return fmt.Errorf("sets.ipv6.%s: invalid entry %q: %w", name, entry, err)
+				return fmt.Errorf("Lists.ipv6.%s: invalid entry %q: %w", name, entry, err)
 			}
 		}
 	}
@@ -301,49 +304,83 @@ func validateConfig(cfg *Config) error {
 			return fmt.Errorf("rule %q: cannot use both iif and iifname", rule.Comment)
 		}
 
-		// prevent empty src_set
-		if rule.SrcSet != "" {
-			if set, ok := cfg.Sets.IPv4[rule.SrcSet]; ok && len(set.Entries) == 0 {
-				return fmt.Errorf("rule %q: set %q exists but has no entries", rule.Comment, rule.SrcSet)
+		// prevent empty src_list
+		if rule.SrcList != "" {
+			if list, ok := cfg.Lists.IPv4[rule.SrcList]; ok && len(list.Entries) == 0 {
+				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.SrcList)
 			}
-			if set, ok := cfg.Sets.IPv6[rule.SrcSet]; ok && len(set.Entries) == 0 {
-				return fmt.Errorf("rule %q: set %q exists but has no entries", rule.Comment, rule.SrcSet)
+			if list, ok := cfg.Lists.IPv6[rule.SrcList]; ok && len(list.Entries) == 0 {
+				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.SrcList)
+			}
+		}
+
+		// prevent empty dst_list
+		if rule.DstList != "" {
+			if list, ok := cfg.Lists.IPv4[rule.DstList]; ok && len(list.Entries) == 0 {
+				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.DstList)
+			}
+			if list, ok := cfg.Lists.IPv6[rule.DstList]; ok && len(list.Entries) == 0 {
+				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.DstList)
 			}
 		}
 
 		// warn when a rule does not have any src-ip or in-interface matching (ie: open to all)
-		if len(rule.SrcIPs) == 0 && rule.SrcSet == "" && rule.IIF == "" && rule.IIFName == "" && len(rule.CtState) == 0 {
+		if len(rule.SrcIPs) == 0 && rule.SrcList == "" && rule.IIF == "" && rule.IIFName == "" && len(rule.CtState) == 0 {
 			if len(rule.DPort) > 0 {
-				fmt.Fprintf(os.Stderr, "WARNING: Rule %q has dport but no source restriction (src_set, src_ips, iifname, etc), leaving it open to all addresses from all interfaces\n", rule.Comment)
+				fmt.Fprintf(os.Stderr, "WARNING: Rule %q has dport but no source restriction (src_list, src_ips, iifname, etc), leaving it open to all addresses from all interfaces\n", rule.Comment)
 			}
 		}
 
-		// validate src_set references point to sets that exist
-		if rule.SrcSet != "" {
-			if _, ok := cfg.Sets.IPv4[rule.SrcSet]; !ok {
-				if _, ok := cfg.Sets.IPv6[rule.SrcSet]; !ok {
-					return fmt.Errorf("rule %q references undefined set %q", rule.Comment, rule.SrcSet)
+		// validate src_list references only existing lists
+		if rule.SrcList != "" {
+			if _, ok := cfg.Lists.IPv4[rule.SrcList]; !ok {
+				if _, ok := cfg.Lists.IPv6[rule.SrcList]; !ok {
+					return fmt.Errorf("rule: %q references non-existent address list %q", rule.Comment, rule.SrcList)
+				}
+			}
+		}
+		// validate dst_list references only existing lists
+		if rule.DstList != "" {
+			if _, ok := cfg.Lists.IPv4[rule.DstList]; !ok {
+				if _, ok := cfg.Lists.IPv6[rule.DstList]; !ok {
+					return fmt.Errorf("rule: %q references non-existent address list %q", rule.Comment, rule.DstList)
 				}
 			}
 		}
 
-		// validate inline src_ips are valid
+		// validate src_ips are valid cidr formatting
 		for _, ip := range rule.SrcIPs {
 			if err := validateCIDR(ip); err != nil {
 				return fmt.Errorf("rule %q: invalid src_ips entry %q: %w", rule.Comment, ip, err)
 			}
 		}
 
-		// can't use both src_set and src_ips on the same rule
-		if rule.SrcSet != "" && len(rule.SrcIPs) > 0 {
-			return fmt.Errorf("rule %q: cannot use both src_set and src_ips", rule.Comment)
+		// validate dst_ips are valid cidr formatting
+		for _, ip := range rule.DstIPs {
+			if err := validateCIDR(ip); err != nil {
+				return fmt.Errorf("rule %q: invalid src_ips entry %q: %w", rule.Comment, ip, err)
+			}
 		}
 
-		// dport is only valid with tcp or udp
+		// can't use both src_list and src_ips on the same rule
+		if rule.SrcList != "" && len(rule.SrcIPs) > 0 {
+			return fmt.Errorf("rule %q: cannot use both src_list and src_ips", rule.Comment)
+		}
+
+		// dport is only valid with tcp or udp protos
 		if len(rule.DPort) > 0 {
 			for _, proto := range rule.Protocol.Protocols {
 				if proto != "tcp" && proto != "udp" {
-					return fmt.Errorf("rule %q: dport is only valid with tcp or udp, got %q",
+					return fmt.Errorf("rule %q: dst_port is only valid with tcp or udp, got %q",
+						rule.Comment, proto)
+				}
+			}
+		}
+		// sport is only valid w/ tcp or udp protos
+		if len(rule.SPort) > 0 {
+			for _, proto := range rule.Protocol.Protocols {
+				if proto != "tcp" && proto != "udp" {
+					return fmt.Errorf("rule %q: src_port is only valid with tcp or udp, got %q",
 						rule.Comment, proto)
 				}
 			}
@@ -375,17 +412,22 @@ func validateConfig(cfg *Config) error {
 			return fmt.Errorf("rule %q: dport requires a protocol (tcp or udp)", rule.Comment)
 		}
 
+		// and sport requires protocl
+		if len(rule.SPort) > 0 && len(rule.Protocol.Protocols) == 0 {
+			return fmt.Errorf("rule %q: sport requires a protocol (tcp or udp)", rule.Comment)
+		}
+
 	}
 
 	// check user-supplied names for special chars
-	for name := range cfg.Sets.IPv4 {
+	for name := range cfg.Lists.IPv4 {
 		if strings.ContainsAny(name, " \t\"\\@{}()") {
-			return fmt.Errorf("sets.ipv4.%s: set name contains invalid characters", name)
+			return fmt.Errorf("Lists.ipv4.%s: list name contains invalid characters", name)
 		}
 	}
-	for name := range cfg.Sets.IPv6 {
+	for name := range cfg.Lists.IPv6 {
 		if strings.ContainsAny(name, " \t\"\\@{}()") {
-			return fmt.Errorf("sets.ipv6.%s: set name contains invalid characters", name)
+			return fmt.Errorf("Lists.ipv6.%s: list name contains invalid characters", name)
 		}
 	}
 	// and table name

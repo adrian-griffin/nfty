@@ -288,9 +288,9 @@ func runCheck(args []string) {
 	fmt.Printf("  ipv4 rules:    %d input, %d forward, %d output, %d postrouting\n", v4in, v4fwd, v4out, v4post)
 	fmt.Printf("  ipv6 rules:    %d input, %d forward, %d output, %d postrouting\n", v6in, v6fwd, v6out, v6post)
 
-	// count sets
-	fmt.Printf("  ipv4 sets:     %d\n", len(cfg.Sets.IPv4))
-	fmt.Printf("  ipv6 sets:     %d\n", len(cfg.Sets.IPv6))
+	// count lists
+	fmt.Printf("  ipv4 address lists:     %d\n", len(cfg.Lists.IPv4))
+	fmt.Printf("  ipv6 address lists:     %d\n", len(cfg.Lists.IPv6))
 
 	// if list-ruleset run, output spacer & generated NFTables config
 	if *listNFTRules {

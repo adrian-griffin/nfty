@@ -1,4 +1,4 @@
-# nfty template — public VPS, for internet-facing servers hosting web services
+# nfty template - public VPS, for internet-facing servers hosting web services
 # example includes caddy reverse proxy & web, wireguard headend, and SNMP monitoring
 #
 # of course, please excercise caution when dealing with public-facing servers
@@ -7,7 +7,7 @@
 
 [core]
   name          = "my-public-host-firewall"
-  description   = "Public VPS — caddy reverse proxy + wireguard headend"
+  description   = "Public VPS - caddy reverse proxy + wireguard headend"
   table         = "nfty-default"
   docker_compat = true
   persist       = true
@@ -16,39 +16,39 @@
 # IP Lists
 # ---------------------------------------------------------------------------
 
-[sets.ipv4.ssh]
+[lists.ipv4.ssh]
   comment = "SSH Allowlist - keep this as tight as possible on a public VPS"
   entries = [
     "172.16.1.0/24", # vpn subnet
     "100.10.1.1/32", # home ISP public IP
   ]
 
-[sets.ipv4.wg_peers]
+[lists.ipv4.wg_peers]
   comment = "WireGuard public IP allowlist"
   entries = [
     "100.10.1.1/32", # home ISP public IP
   ]
 
-[sets.ipv4.snmp]
+[lists.ipv4.snmp]
   comment = "SNMP monitoring allowlist"
   entries = [
     "172.16.1.5/32", # NMS server VPN address
   ]
 
-[sets.ipv6.ssh]
+[lists.ipv6.ssh]
   comment = "IPv6 SSH allowlist"
   entries = [
     "2001:db8::/64", # home ISP IPv6 prefix
   ]
 
-[sets.ipv6.wg_peers]
+[lists.ipv6.wg_peers]
   comment = "IPv6 WireGuard peers"
   entries = [
     "2001:db8::2/128", # home router ipv6
   ]
 
 # ---------------------------------------------------------------------------
-# INPUT — IPv4
+# INPUT - IPv4
 # ---------------------------------------------------------------------------
 
 [[chains.ipv4.input]]
@@ -71,28 +71,28 @@
   action   = "drop"
 
 [[chains.ipv4.input]]
-  comment  = "SSH — allowlist only"
+  comment  = "SSH - allowlist only"
   protocol = "tcp"
   dport    = [22]
   src_set  = "ssh"
   action   = "accept"
 
 [[chains.ipv4.input]]
-  comment  = "SSH — log and drop everything else"
+  comment  = "SSH - log and drop everything else"
   protocol = "tcp"
   dport    = [22]
   log      = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
   action   = "drop"
 
 [[chains.ipv4.input]]
-  comment  = "SNMP — monitoring host only"
+  comment  = "SNMP - monitoring host only"
   protocol = "udp"
   dport    = [161]
   src_set  = "snmp"
   action   = "accept"
 
 [[chains.ipv4.input]]
-  comment    = "HTTP/HTTPS new connections — rate limited"
+  comment    = "HTTP/HTTPS new connections - rate limited"
   iifname    = "eth0"
   protocol   = "tcp"
   dport      = [80, 443]
@@ -101,7 +101,7 @@
   over_limit = "drop"
 
 [[chains.ipv4.input]]
-  comment    = "HTTP/HTTPS established — rate limited"
+  comment    = "HTTP/HTTPS established - rate limited"
   iifname    = "eth0"
   protocol   = "tcp"
   dport      = [80, 443]
@@ -116,7 +116,7 @@
   action   = "accept"
 
 # ---------------------------------------------------------------------------
-# INPUT — IPv6
+# INPUT - IPv6
 # ---------------------------------------------------------------------------
 
 [[chains.ipv6.input]]
@@ -125,7 +125,7 @@
   action  = "accept"
 
 [[chains.ipv6.input]]
-  comment    = "ICMPv6 rate limit — required for IPv6 to function"
+  comment    = "ICMPv6 rate limit - required for IPv6 to function"
   protocol   = "icmpv6"
   rate_limit = { rate = "100/second", action = "accept" }
   over_limit = "drop"
@@ -139,14 +139,14 @@
   action   = "drop"
 
 [[chains.ipv6.input]]
-  comment  = "SSH IPv6 — allowlist only"
+  comment  = "SSH IPv6 - allowlist only"
   protocol = "tcp"
   dport    = [22]
   src_set  = "ssh"
   action   = "accept"
 
 [[chains.ipv6.input]]
-  comment  = "SSH IPv6 — log and drop everything else"
+  comment  = "SSH IPv6 - log and drop everything else"
   protocol = "tcp"
   dport    = [22]
   log      = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
@@ -160,7 +160,7 @@
   action   = "accept"
 
 # ---------------------------------------------------------------------------
-# FORWARD — default drop, uncomment as needed
+# FORWARD - default drop, uncomment as needed
 # ---------------------------------------------------------------------------
 
 # [[chains.ipv4.forward]]
@@ -170,7 +170,7 @@
 #   action  = "accept"
 
 # ---------------------------------------------------------------------------
-# POSTROUTING — IPv4 NAT
+# POSTROUTING - IPv4 NAT
 # ---------------------------------------------------------------------------
 
 # this is needed if you plan to use your VPS as an exit-node for any VPN setup

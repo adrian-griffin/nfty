@@ -1,10 +1,10 @@
-# nfty template — internal, for hosts on your private, home network
+# nfty template - internal, for hosts on your private, home network
 # example is for a machine running pihole DNS + SNMP monitoring
 # -------------------------------------------------------------------
 
 [core]
   name          = "my-host-firewall"
-  description   = "Internal node — pihole DNS & web UI + SNMP monitoring"
+  description   = "Internal node - pihole DNS & web UI + SNMP monitoring"
   table         = "nfty-default"
   docker_compat = true
   persist       = true
@@ -15,7 +15,7 @@
   log_ssh_fails = true
 
 # ---------------------------------------------------------------------------
-# Chain Policies — default action when no rule matches
+# Chain Policies - default action when no rule matches
 # ---------------------------------------------------------------------------
 
 # if you are unsure about these options, keep them default
@@ -32,27 +32,27 @@
 
 # adjust the IPs and subnets in these lists for services you host, as needed
 
-[sets.ipv4.ssh]
+[lists.ipv4.ssh]
   comment = "SSH Allowlist"
   entries = [
     "10.100.1.5/32", # desktop pc
   ]
 
-[sets.ipv4.webui]
+[lists.ipv4.webui]
   comment = "IPv4 Web/HTTP Server Allowlist"
   entries = [
     "10.100.1.5/32", # desktop pc
     "172.16.1.0/24", # vpn subnet
   ]
 
-[sets.ipv4.dns]
+[lists.ipv4.dns]
   comment = "IPv4 DNS Allowlist - keep restricted"
   entries = [
     "10.100.1.0/24", # home subnet
     "172.16.1.0/24", # vpn subnet
   ]
 
-[sets.ipv6.dns]
+[lists.ipv6.dns]
   comment = "IPv6 DNS Allowlist"
   entries = [
     "2001:db8::/64",    # your home IPv6 prefix
