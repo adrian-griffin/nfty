@@ -73,10 +73,11 @@ type PortValue struct {
 	End   int
 }
 
-// maps supplied array to individual objects
+// custom objects for more robust toml handling
 type ProtoValue struct {
 	Protocols []string
 }
+type StringList []string
 
 // returns final port-value object as string
 func (port PortValue) String() string {
@@ -89,6 +90,25 @@ func (port PortValue) String() string {
 // validates whether user-supplied port(s) are range or single-value
 func (port PortValue) IsSingle() bool {
 	return port.Start == port.End
+}
+
+// manual unmarshalling of ips to allow slices or str
+func (stringlist *StringList) UnmarshalTOML(data interface{}) error {
+	switch v := data.(type) {
+	case string:
+		*stringlist = []string{v}
+	case []interface{}:
+		for _, item := range v {
+			s, ok := item.(string)
+			if !ok {
+				return fmt.Errorf("list entries must be strings, got %T", item)
+			}
+			*stringlist = append(*stringlist, s)
+		}
+	default:
+		return fmt.Errorf("expected string or array of strings, got %T", data)
+	}
+	return nil
 }
 
 // manual unmarshalling to catch various port ranges & lists
@@ -149,22 +169,23 @@ func (proto *ProtoValue) UnmarshalTOML(data interface{}) error {
 
 // defines single rule entry, maps directly to nftables design
 type Rule struct {
-	Comment   string      `toml:"comment"`  //name and description
-	IIF       string      `toml:"iif"`      // inbound interface (lo, etc.)
-	IIFName   string      `toml:"iifname"`  // inbound interface name match
-	OIFName   string      `toml:"oifname"`  // outbound interface name match
-	Protocol  ProtoValue  `toml:"protocol"` // icmp, icmpv6, tcp, udp
-	DPort     []PortValue `toml:"dport"`    // destination port(s) or ranges
-	SrcList   string      `toml:"src_list"` // reference to a named address set
-	SrcIPs    []string    `toml:"src_ips"`  // inline source IPs/CIDRs (alternative to src_list)
-	CtState   []string    `toml:"ct_state"` // conntrack states
-	RateLimit *RateLimit  `toml:"rate_limit"`
+	Comment   string      `toml:"comment"`    // name and description
+	IIF       string      `toml:"iif"`        // inbound interface (lo, etc.)
+	IIFName   string      `toml:"iifname"`    // inbound interface name match
+	OIFName   string      `toml:"oifname"`    // outbound interface name match
+	Protocol  ProtoValue  `toml:"protocol"`   // icmp, icmpv6, tcp, udp
+	DPort     []PortValue `toml:"dport"`      // destination port(s) or ranges
+	SrcList   string      `toml:"src_list"`   // reference to a named address set
+	SrcIPs    StringList  `toml:"src_ips"`    // inline source IPs/CIDRs (alternative to src_list)
+	CtState   StringList  `toml:"ct_state"`   // conntrack states
+	RateLimit *RateLimit  `toml:"rate_limit"` // rate limit packets
 	OverLimit string      `toml:"over_limit"` // action when rate exceeded: drop/log
-	Log       *LogConfig  `toml:"log"`
-	Action    string      `toml:"action"` // accept, drop, masquerade
-	DstList   string      `toml:"dst_list"`
-	DstIPs    []string    `toml:"dst_ips"`
-	SPort     []PortValue `toml:"sport"`
+	Log       *LogConfig  `toml:"log"`        // log to kernel/nft logs
+	Action    string      `toml:"action"`     // accept, drop, masquerade
+	DstList   string      `toml:"dst_list"`   // destination address list
+	DstIPs    StringList  `toml:"dst_ips"`    // destination ip array
+	SPort     []PortValue `toml:"sport"`      // source port
+	Disabled  bool        `toml:"disable"`
 }
 
 // define rate-limiter objects
@@ -272,6 +293,14 @@ func validateConfig(cfg *Config) error {
 		// no double quotes that can escape str
 		if strings.ContainsAny(rule.Comment, "\"\\") {
 			return fmt.Errorf("rule %q: comment must not contain quotes or backslashes", rule.Comment)
+		}
+
+		ruleSeen := map[string]bool{}
+		for _, rule := range allRules {
+			if ruleSeen[rule.Comment] {
+				return fmt.Errorf("duplicate rule comment %q", rule.Comment)
+			}
+			ruleSeen[rule.Comment] = true
 		}
 
 		// rate_limit.rate is required if rate_limit is set
@@ -387,6 +416,18 @@ func validateConfig(cfg *Config) error {
 				if proto != "tcp" && proto != "udp" {
 					return fmt.Errorf("rule %q: src_port is only valid with tcp or udp, got %q",
 						rule.Comment, proto)
+				}
+			}
+		}
+
+		// tcp or udp only can be passed with corresponding dport number
+		if len(rule.Protocol.Protocols) > 0 {
+			for _, proto := range rule.Protocol.Protocols {
+				if proto == "tcp" || proto == "udp" {
+					if len(rule.DPort) == 0 {
+						return fmt.Errorf("rule %q: protocol udp or tcp only valid with dport",
+							rule.Comment)
+					}
 				}
 			}
 		}

@@ -2,6 +2,7 @@ package rules
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/adrian-griffin/nfty/config"
@@ -246,11 +247,18 @@ func buildChainRules(userRules []config.Rule, family string,
 
 	// inject user-defined rules, splitting multi-protocol nfty config entries into multiple nftables lines
 	for _, rule := range userRules {
-		ruleLine, err := buildRule(rule, family) // stubbing
-		if err != nil {
-			return nil, fmt.Errorf("chain %s, rule %q: %w", chainName, rule.Comment, err)
+
+		// skip rule-build if rule is disabled
+		if !rule.Disabled {
+			ruleLine, err := buildRule(rule, family) // stubbing
+			if err != nil {
+				return nil, fmt.Errorf("chain %s, rule %q: %w", chainName, rule.Comment, err)
+			}
+			lines = append(lines, ruleLine...)
+		} else {
+			fmt.Fprintf(os.Stderr, "  skipping disabled rule: %q\n", rule.Comment)
 		}
-		lines = append(lines, ruleLine...)
+
 	}
 
 	// logging and other auto-generated rules at the end, possibly more to add later
@@ -293,7 +301,7 @@ func buildRateLimitLines(matchParts []string, rule config.Rule) []string {
 // builds out all the dynamic "matcher" portions of nft rules
 // <interface-match>     <socket/procol+port>    <src-address>   <conn state>
 // eg: ["iifname \"eth0\"", "tcp dport { 80, 443 }", "ip saddr @webui"]
-func buildMatchCriteria(rule config.Rule, proto string, family string) []string {
+func buildMatchCriteria(rule config.Rule, proto string, family string) ([]string, error) {
 	var parts []string
 
 	// interface name matching
@@ -317,8 +325,8 @@ func buildMatchCriteria(rule config.Rule, proto string, family string) []string 
 			// "tcp dport 22" or "udp dport { 53, 5353 }"
 			parts = append(parts, fmt.Sprintf("%s dport %s", proto, formatPort(rule.DPort)))
 		} else {
-			// "meta l4proto tcp" - match protocol without port constraint
-			parts = append(parts, fmt.Sprintf("meta l4proto %s", proto))
+			// return err if no dport # passed
+			return nil, fmt.Errorf("protocol passed without any dst port specified")
 		}
 		// or if icmp/icmp6, do `meta l4` writing
 	} else if proto == "icmp" || proto == "icmpv6" {
@@ -353,7 +361,7 @@ func buildMatchCriteria(rule config.Rule, proto string, family string) []string 
 		parts = append(parts, fmt.Sprintf("ct state %s", strings.Join(rule.CtState, ",")))
 	}
 
-	return parts
+	return parts, nil
 }
 
 // constructs ip or ip6 NFTables table string
@@ -433,7 +441,10 @@ func buildRule(rule config.Rule, family string) ([]string, error) {
 
 		// build match portion of rule
 		// such as matching interface, protocol, src-address, etc.
-		parts := buildMatchCriteria(rule, proto, family)
+		parts, err := buildMatchCriteria(rule, proto, family)
+		if err != nil {
+			return nil, fmt.Errorf("error building rule: %v", err)
+		}
 
 		// rlimit rules need to be split (1 rule in nfty = 2 rules in nftables)
 		if rule.RateLimit != nil {

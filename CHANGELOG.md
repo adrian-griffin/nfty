@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [0.2.2] - 2026-Apr-19
 - dst_ips & dst_lists functionality
 - src_port functionality
+- configfile validation improvements
+- rule disable functionality
 
 ## [0.2.1] - 2026-Apr-15
 - nftables counter write functionality

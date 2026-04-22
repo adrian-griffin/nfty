@@ -67,26 +67,26 @@
   comment  = "Allowed SSH hosts"
   protocol = "tcp"
   dport    = [22]
-  src_set  = "ssh"
+  src_list  = "ssh"
   action   = "accept"
 
 [[chains.ipv4.input]]
   comment  = "Web HTTP/HTTPS"
   protocol = "tcp"
   dport    = [80, 443]
-  src_set  = "webui"
+  src_list  = "webui"
   action   = "accept"
 
 [[chains.ipv4.input]]
   comment  = "DNS - Both protocols!"
   protocol = ["tcp", "udp"]
   dport    = [53]
-  src_set  = "dns"
+  src_list  = "dns"
   action   = "accept"
 
 [[chains.ipv6.input]]
   comment  = "DNS IPv6 - Please use caution if hosting a DNS server on IPv6 or publicly routable IPv4"
   protocol = ["tcp", "udp"]
   dport    = [53]
-  src_set  = "dns"
+  src_list  = "dns"
   action   = "accept"
