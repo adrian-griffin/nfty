@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/adrian-griffin/nfty/colour"
 	"github.com/adrian-griffin/nfty/commit"
 	"github.com/adrian-griffin/nfty/config"
 	"github.com/adrian-griffin/nfty/counters"
@@ -305,7 +306,58 @@ func runCheck(args []string) {
 	}
 }
 
-// build synopsis of nfty and NFTables rule states
+// max length left-column for labels
+const labelWidth = 18
+
+// return grey for left-column labels
+func label(s string) string {
+	return colour.Grey(fmt.Sprintf("%-*s", labelWidth, s))
+}
+
+// writes section divier
+func divider() {
+	fmt.Println(colour.Grey("  " + strings.Repeat("─", 52)))
+}
+
+// gathers file path & last-edited time
+func fileInfo(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+
+	// make that shit human readable tho
+	size := info.Size()
+	var sizeStr string
+	switch {
+	// if < 1048576b (1MB)
+	case size >= 1<<20:
+		sizeStr = fmt.Sprintf("%.1fMB", float64(size)/float64(1<<20))
+		// if < 1024 (1KB)
+	case size >= 1<<10:
+		sizeStr = fmt.Sprintf("%.1fKB", float64(size)/float64(1<<10))
+	default:
+		sizeStr = fmt.Sprintf("%dB", size)
+	}
+
+	// convert time into HR
+	age := time.Since(info.ModTime()).Round(time.Second)
+	var ageStr string
+	switch {
+	case age < time.Minute:
+		ageStr = fmt.Sprintf("%ds ago", int(age.Seconds()))
+	case age < time.Hour:
+		ageStr = fmt.Sprintf("%dm ago", int(age.Minutes()))
+	case age < 24*time.Hour:
+		ageStr = fmt.Sprintf("%dh ago", int(age.Hours()))
+	default:
+		ageStr = fmt.Sprintf("%dh ago", int(age.Hours()))
+	}
+
+	return fmt.Sprintf("%s, %s", sizeStr, ageStr)
+}
+
+// build status output
 func runStatus() {
 	args := sortFlags(os.Args[2:])
 	fs := flag.NewFlagSet("status", flag.ExitOnError)

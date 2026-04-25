@@ -30,7 +30,7 @@ const (
 	fgBlue   = "\033[34m"
 	fgCyan   = "\033[36m"
 	fgWhite  = "\033[37m"
-	fgGray   = "\033[90m"
+	fgGrey   = "\033[90m"
 )
 
 func wrap(code, s string) string {
@@ -46,6 +46,8 @@ func Red(s string) string    { return wrap(fgRed, s) }
 func Green(s string) string  { return wrap(fgGreen, s) }
 func Blue(s string) string   { return wrap(fgBlue, s) }
 func Yellow(s string) string { return wrap(fgYellow, s) }
+func Cyan(s string) string   { return wrap(fgCyan, s) }
+func Grey(s string) string   { return wrap(fgGrey, s) }
 
 // strf formatters
 func Boldf(format string, a ...any) string   { return Bold(fmt.Sprintf(format, a...)) }
