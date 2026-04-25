@@ -4,11 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.2.5] - 2026-Apr-25
+## [0.3.0] - 2026-Apr-25
 - status, apply, confirm, etc. output ui/format overhaul
 - ansi terminal colour package
 - additional metadata collection
 - last-apply state persistence and status output
+- config diffing
 
 ## [0.2.2] - 2026-Apr-19
 - dst_ips & dst_lists functionality

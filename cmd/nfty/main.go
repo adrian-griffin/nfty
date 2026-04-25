@@ -274,7 +274,7 @@ func runConfirm() {
 	state, err := commit.LoadPending()
 	if err == nil {
 		fmt.Printf("  %s%s\n", label("confirming"), colour.Blue(state.ConfigPath))
-		fmt.Printf("  %s%s %s\n", label("applied by"), colour.Grey(state.AppliedBy), colour.DarkGrey("("+state.AppliedAt.Format("15:04:05"))+")")
+		fmt.Printf("  %s%s %s\n", label("applied by"), colour.Grey(state.AppliedBy), colour.DarkGrey("("+state.AppliedAt.Format("15:04:05")+")"))
 		fmt.Printf("  %s%s\n", label("checksum"), colour.DarkGrey(state.Checksum))
 		divider()
 	}
@@ -294,7 +294,7 @@ func runConfirm() {
 
 	// prior to clearing, write state to last-apply.json
 	if state != nil {
-		if err := commit.WriteLastApply(state, state.Checksum); err != nil {
+		if err := commit.WriteLastApply(state); err != nil {
 			fmt.Fprintf(os.Stderr, "WARNING: could not persists last apply state to last-apply.json: %v\n", err)
 		}
 	}
@@ -314,11 +314,8 @@ func runRollbackIfPending() {
 	}
 
 	fmt.Printf("%s\n", colour.DarkGrey("[ systemd: nfty-rollback.timer fired ]"))
-
 	fmt.Printf("%s\n", colour.Red("commit-confirm timer expired"))
 	fmt.Printf("%s\n", colour.Grey("reverting to previous known good state"))
-	divider()
-	fmt.Printf("%s\n", colour.Green("✓ previous ruleset restored"))
 
 	snapshot, err := commit.LoadRollbackSnapshot()
 	if err != nil {
@@ -332,7 +329,8 @@ func runRollbackIfPending() {
 	}
 
 	commit.ClearPending()
-	fmt.Println("nfty: restored previous ruleset")
+	divider()
+	fmt.Printf("%s\n", colour.Green("✓ previous ruleset restored"))
 }
 
 // validates a config file without applying

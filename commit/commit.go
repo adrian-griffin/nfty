@@ -84,7 +84,7 @@ func WritePending(configPath, checksum string, deadlineSeconds int) error {
 	}
 	state := PendingState{
 		ConfigPath: configPath,
-		AppliedBy:  os.Getenv("USER"),
+		AppliedBy:  user,
 		AppliedAt:  now,
 		Deadline:   now.Add(time.Duration(deadlineSeconds) * time.Second),
 		Checksum:   checksum,
@@ -125,13 +125,13 @@ func ClearPending() error {
 }
 
 // write data from last apply to disk for persistence
-func WriteLastApply(state *PendingState, checksum string) error {
+func WriteLastApply(state *PendingState) error {
 	record := LastApply{
 		ConfigPath:  state.ConfigPath,
 		AppliedBy:   state.AppliedBy,
 		AppliedAt:   state.AppliedAt,
 		ConfirmedAt: time.Now(),
-		Checksum:    checksum,
+		Checksum:    state.Checksum,
 	}
 	data, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {

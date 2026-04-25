@@ -22,6 +22,11 @@ func nftCall(args ...string) ([]byte, error) {
 	return out, nil
 }
 
+// returns nft output for a single table by ip-family & name
+func ListTable(family, name string) ([]byte, error) {
+	return nftCall("list", "table", family, name)
+}
+
 // validates binary
 func CheckBinary() error {
 	if _, err := nftCall("--version"); err != nil {
