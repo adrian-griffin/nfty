@@ -359,61 +359,116 @@ func fileInfo(path string) string {
 
 // build status output
 func runStatus() {
-	args := sortFlags(os.Args[2:])
+	args := sortFlags(os.Args[2:]) // sort flags
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 	listRuleset := fs.Bool("list-ruleset", false, "show full nftables ruleset")
 	fs.Parse(args)
 
-	fmt.Println("  ▲  nfty status")
+	// hostname for the header line
+	hostname, _ := os.Hostname()
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	// in case user has dementia
+	fmt.Printf("  %s %s", colour.Grey("nfty"), colour.Bold("status"))
+	if hostname != "" {
+		fmt.Printf("    %s", colour.Grey(hostname+" · "+now))
+	}
 	fmt.Println()
 
-	// check if state is pending, display pending state info here
+	divider()
+
+	// ~~ pending output
 	if commit.IsPending() {
 		state, err := commit.LoadPending()
 		if err == nil {
 			remaining := time.Until(state.Deadline).Round(time.Second)
-			fmt.Println("PENDING APPLY - awaiting confirmation")
-			fmt.Printf("    config:    %s\n", state.ConfigPath)
-			fmt.Printf("    applied:   %s by %s\n", state.AppliedAt.Format("15:04:05"), state.AppliedBy)
+
+			// apply header & badge
+			fmt.Printf("  %s  %s\n", colour.Yellow("▲ pending apply"), colour.Yellow("awaiting confirm"))
+
+			// detail rows
+			fmt.Printf("    %s%s\n", label("config"), colour.Blue(state.ConfigPath))
+			fmt.Printf("    %s%s\n", label("applied by"), colour.Grey(state.AppliedBy))
+			fmt.Printf("    %s%s\n", label("applied at"), colour.Grey(state.AppliedAt.Format("15:04:05")))
+
+			// deadline turns red when <10s
 			if remaining > 0 {
-				fmt.Printf("    deadline:  %s remaining\n", remaining)
+				deadlinecolour := colour.Yellow
+				if remaining < 10*time.Second {
+					deadlinecolour = colour.Red
+				}
+				fmt.Printf("    %s%s %s\n",
+					label("deadline"),
+					deadlinecolour(remaining.String()+" remaining"),
+					// expiry time stays grey
+					colour.Grey("(expires "+state.Deadline.Format("15:04:05")+")"),
+				)
 			} else {
-				fmt.Printf("    deadline:  expired (rollback likely in progress)\n")
+				fmt.Printf("    %s%s\n", label("deadline"), colour.Red("expired (rollback likely in progress)"))
 			}
-			fmt.Println()
+
+			fmt.Printf("    %s%s\n", label("rollback via"), colour.Grey("systemd timer - survives shell death"))
 		}
 	} else {
-		fmt.Println("no pending config changes")
+		fmt.Printf("  %s\n", colour.Green("✓ no pending changes"))
 	}
 
-	// show file state
-	if _, err := os.Stat(commit.RunningFile); err == nil {
-		fmt.Println("  running.nft:  present")
-	} else {
-		fmt.Println("  running.nft:  not found")
-	}
-	if _, err := os.Stat(commit.RollbackFile); err == nil {
-		fmt.Println("  rollback.nft: present")
-	} else {
-		fmt.Println("  rollback.nft: not found")
-	}
-	fmt.Println()
+	divider()
 
-	// scrape live ruleset from nft
+	// ~~ status/state files
+	fmt.Printf("  %s\n", colour.Grey("state files"))
+
+	// build transient struct for both filetypes
+	for _, f := range []struct {
+		label string
+		path  string
+	}{
+		{"running.nft", commit.RunningFile},
+		{"rollback.nft", commit.RollbackFile},
+	} {
+		if _, err := os.Stat(f.path); err == nil {
+			finfo := fileInfo(f.path)
+			fmt.Printf("    %s%s", label(f.label), colour.Green("present"))
+			if finfo != "" {
+				fmt.Printf("  %s", colour.Grey("- "+finfo))
+			}
+			fmt.Println()
+		} else {
+			fmt.Printf("    %s%s\n", label(f.label), colour.Red("not found"))
+		}
+	}
+
+	divider()
+
+	// ~~ active ruleset stats
 	out, err := nft.ListRulesetScript()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "could not read nftables state: %v\n", err)
+		fmt.Fprintf(os.Stderr, "  %s %v\n", colour.Red("error:"), err)
 		os.Exit(1)
 	}
 
+	// stringify
 	ruleset := string(out)
-
-	// count tables, chains, rules from live output
 	tables, chains, ruleCount := countNftObjects(ruleset)
-	fmt.Printf("  live nftables: %d tables, %d chains, %d rules\n", tables, chains, ruleCount)
 
+	fmt.Printf("  %s\n", colour.Grey("active ruleset"))
+	fmt.Printf("    %s%d\n", label("tables"), tables)
+	fmt.Printf("    %s%d\n", label("chains"), chains)
+	fmt.Printf("    %s%d\n", label("rules"), ruleCount)
+
+	// ~~ footer (only when pending state)
+	if commit.IsPending() {
+		divider()
+		fmt.Printf("  %s  %s\n",
+			colour.Grey("run "+colour.Cyan("nfty confirm")+" to approve"),
+			colour.Grey("· "+colour.Cyan("nfty rollback")+" to revert immediately"),
+		)
+	}
+
+	// ~~ optional full nft dump
 	if *listRuleset {
-		fmt.Println("\n--- live nftables ruleset ---")
+		fmt.Println()
+		fmt.Println(colour.Grey("--- live nftables ruleset ---"))
 		fmt.Print(ruleset)
 	}
 }
