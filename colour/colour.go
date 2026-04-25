@@ -48,6 +48,7 @@ func Blue(s string) string   { return wrap(fgBlue, s) }
 func Yellow(s string) string { return wrap(fgYellow, s) }
 func Cyan(s string) string   { return wrap(fgCyan, s) }
 func Grey(s string) string   { return wrap(fgGrey, s) }
+func White(s string) string  { return wrap(fgWhite, s) }
 
 // strf formatters
 func Boldf(format string, a ...any) string   { return Bold(fmt.Sprintf(format, a...)) }

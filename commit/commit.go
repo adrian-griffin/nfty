@@ -9,11 +9,12 @@ import (
 )
 
 const (
-	BaseDir      = "/var/nfty"
-	RollbackFile = "/var/nfty/rollback.nft"
-	RunningFile  = "/var/nfty/running.nft"
-	PendingFile  = "/var/nfty/pending.json"
-	TimerUnit    = "nfty-commit-confirm"
+	BaseDir       = "/var/nfty"
+	RollbackFile  = "/var/nfty/rollback.nft"
+	RunningFile   = "/var/nfty/running.nft"
+	PendingFile   = "/var/nfty/pending.json"
+	LastApplyFile = "/var/nfty/last-apply.json"
+	TimerUnit     = "nfty-commit-confirm"
 )
 
 // struct for 'in-flight' config application that has yet to be `nfty confirm`
@@ -23,6 +24,14 @@ type PendingState struct {
 	AppliedBy  string    `json:"applied_by"`
 	AppliedAt  time.Time `json:"applied_at"`
 	Deadline   time.Time `json:"deadline"`
+}
+
+// same deal for last-apply.json output
+type LastApply struct {
+	ConfigPath  string    `json:"config_path"`
+	AppliedBy   string    `json:"applied_by"`
+	AppliedAt   time.Time `json:"applied_at"`
+	ConfirmedAt time.Time `json:"confirmed_at"`
 }
 
 // ensure nfty homedir exists
@@ -63,6 +72,14 @@ func LoadRunningRuleset() (string, error) {
 // writes some metadata
 func WritePending(configPath string, deadlineSeconds int) error {
 	now := time.Now()
+
+	user := os.Getenv("SUDO_USER")
+	if user == "" {
+		user = os.Getenv("USER")
+		if user == "" {
+			return fmt.Errorf("failed to collect active user information")
+		}
+	}
 	state := PendingState{
 		ConfigPath: configPath,
 		AppliedBy:  os.Getenv("USER"),
@@ -102,6 +119,35 @@ func ClearPending() error {
 		return nil
 	}
 	return err
+}
+
+// write data from last apply to disk for persistence
+func WriteLastApply(state *PendingState) error {
+	record := LastApply{
+		ConfigPath:  state.ConfigPath,
+		AppliedBy:   state.AppliedBy,
+		AppliedAt:   state.AppliedAt,
+		ConfirmedAt: time.Now(),
+	}
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(LastApplyFile, data, 0600)
+}
+
+// reads/loads last apply state file
+func LoadLastApply() (*LastApply, error) {
+	data, err := os.ReadFile(LastApplyFile)
+	if err != nil {
+		return nil, err
+	}
+	var record LastApply
+	// unm data into LA struct
+	if err := json.Unmarshal(data, &record); err != nil {
+		return nil, err
+	}
+	return &record, nil
 }
 
 // create systemd timer for nfty rollback
