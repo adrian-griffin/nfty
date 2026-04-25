@@ -105,6 +105,21 @@ func runApply(args []string) {
 		os.Exit(1)
 	}
 
+	// hostname for the header line
+	hostname, _ := os.Hostname()
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	// in case user has dementia
+	fmt.Printf("  %s %s%s%s\n",
+		colour.Grey("nfty"),
+		colour.Bold("apply"),
+		strings.Repeat(" ", 15),
+		colour.DarkGrey(hostname+" · "+now),
+	)
+	fmt.Println()
+
+	divider()
+
 	// load configfile from path
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -157,6 +172,7 @@ func runApply(args []string) {
 
 	fmt.Printf("  %s %s %s\n", colour.Grey("loaded config:"), cfg.Core.Name, colour.DarkGrey(cfg.Core.Description))
 	fmt.Printf("  %s\n", colour.Grey("if not confirmed (due to lockout, terminated ssh session, etc), firewall will revert to previous known good state"))
+	fmt.Println()
 	fmt.Printf("  %s %s\n", colour.Grey("checksum:"), colour.DarkGrey(checksum))
 
 	divider()
@@ -177,7 +193,7 @@ func runApply(args []string) {
 			fmt.Fprintf(os.Stderr, "apply failed: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("%s\n", colour.Green("✓ ruleset applied and committed"))
+		fmt.Printf("%s\n", colour.Green("  ✓ ruleset applied and committed"))
 
 		// skip-confirm: persist immediately, no timer
 		if cfg.Core.Persist {
@@ -185,6 +201,8 @@ func runApply(args []string) {
 				fmt.Fprintf(os.Stderr, "failed to persist ruleset: %v\n", err)
 			}
 		}
+
+		divider()
 
 		fmt.Printf("  %s  %s\n",
 			colour.Grey("run "+colour.Cyan("nfty rollback")+" to revert"),
@@ -221,6 +239,7 @@ func runApply(args []string) {
 		)
 
 		fmt.Printf("  %s%s\n", label("rollback via"), colour.Grey("systemd timer - survives shell death"))
+		divider()
 
 		fmt.Printf("  %s  %s  %s\n",
 			colour.Grey("run "+colour.Cyan("nfty confirm")+" to approve"),
@@ -237,11 +256,26 @@ func runConfirm() {
 		return
 	}
 
+	// hostname for the header line
+	hostname, _ := os.Hostname()
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	// execution header
+	fmt.Printf("  %s %s%s%s\n",
+		colour.Grey("nfty"),
+		colour.Bold("confirm"),
+		strings.Repeat(" ", 15),
+		colour.DarkGrey(hostname+" · "+now),
+	)
+	fmt.Println()
+
+	divider()
+
 	state, err := commit.LoadPending()
 	if err == nil {
-		fmt.Printf("%s%s\n", label("confirming"), colour.Blue(state.ConfigPath))
-		fmt.Printf("%s%s (%s)\n", label("applied by"), colour.Grey(state.AppliedBy), colour.DarkGrey(state.AppliedAt.Format("15:04:05")))
-		fmt.Printf("  %s %s\n", colour.Grey("checksum:"), colour.DarkGrey(state.Checksum))
+		fmt.Printf("  %s%s\n", label("confirming"), colour.Blue(state.ConfigPath))
+		fmt.Printf("  %s%s %s\n", label("applied by"), colour.Grey(state.AppliedBy), colour.DarkGrey("("+state.AppliedAt.Format("15:04:05"))+")")
+		fmt.Printf("  %s%s\n", label("checksum"), colour.DarkGrey(state.Checksum))
 		divider()
 	}
 
@@ -266,8 +300,8 @@ func runConfirm() {
 	}
 
 	commit.ClearPending()
-	fmt.Printf("%s\n", colour.Green("✓ ruleset applied and committed"))
-	fmt.Printf("%s  %s\n",
+	fmt.Printf("  %s\n", colour.Green("✓ ruleset applied and committed"))
+	fmt.Printf("  %s  %s\n",
 		colour.Grey("rollback timer cancelled"),
 		colour.Grey("·  "+"pending state cleared"),
 	)
@@ -428,7 +462,7 @@ func runStatus() {
 	hostname, _ := os.Hostname()
 	now := time.Now().Format("2006-01-02 15:04:05")
 
-	// in case user has dementia
+	// execution header
 	fmt.Printf("  %s %s%s%s\n",
 		colour.Grey("nfty"),
 		colour.Bold("status"),
@@ -622,7 +656,22 @@ func countNftObjects(ruleset string) (tables, chains, rules int) {
 // grabs previous snapshot and applies it
 func runRollback() {
 
-	fmt.Printf("%s\n", colour.Yellow("↺ rolling back to previous ruleset"))
+	// hostname for the header line
+	hostname, _ := os.Hostname()
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	// execution header
+	fmt.Printf("  %s %s%s%s\n",
+		colour.Grey("nfty"),
+		colour.Bold("rollback"),
+		strings.Repeat(" ", 15),
+		colour.DarkGrey(hostname+" · "+now),
+	)
+	fmt.Println()
+
+	divider()
+
+	fmt.Printf("  %s\n", colour.Yellow("↺ rolling back to previous ruleset"))
 	divider()
 
 	snapshot, err := commit.LoadRollbackSnapshot()
@@ -642,8 +691,8 @@ func runRollback() {
 		commit.ClearPending()
 	}
 
-	fmt.Printf("%s\n", colour.Green("✓ previous ruleset restored"))
-	fmt.Printf("%s  %s\n",
+	fmt.Printf("  %s\n", colour.Green("✓ previous ruleset restored"))
+	fmt.Printf("  %s  %s\n",
 		colour.Grey("rollback timer cancelled"),
 		colour.Grey("·  "+"pending state cleared"),
 	)
