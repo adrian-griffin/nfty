@@ -125,12 +125,13 @@ func ClearPending() error {
 }
 
 // write data from last apply to disk for persistence
-func WriteLastApply(state *PendingState) error {
+func WriteLastApply(state *PendingState, checksum string) error {
 	record := LastApply{
 		ConfigPath:  state.ConfigPath,
 		AppliedBy:   state.AppliedBy,
 		AppliedAt:   state.AppliedAt,
 		ConfirmedAt: time.Now(),
+		Checksum:    checksum,
 	}
 	data, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {

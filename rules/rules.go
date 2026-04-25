@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/adrian-griffin/nfty/config"
@@ -382,10 +383,16 @@ func buildTable(family string, tableName string, lists map[string]config.Address
 	}
 
 	// build address-list sets and write them to table output
-	for name, list := range lists {
-		tableOutput.WriteString(buildSet(name, list, addrType))
+	listNames := make([]string, 0, len(lists))
+	for name := range lists {
+		listNames = append(listNames, name)
 	}
+	// but sort them so diffs/checsums remain stable
+	sort.Strings(listNames)
 
+	for _, name := range listNames {
+		tableOutput.WriteString(buildSet(name, lists[name], addrType))
+	}
 	// set priority to 10 to not impede docker's auto-added rules
 	filterPrio := 0
 	if core.DockerCompat {

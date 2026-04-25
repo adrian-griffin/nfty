@@ -294,7 +294,7 @@ func runConfirm() {
 
 	// prior to clearing, write state to last-apply.json
 	if state != nil {
-		if err := commit.WriteLastApply(state); err != nil {
+		if err := commit.WriteLastApply(state, state.Checksum); err != nil {
 			fmt.Fprintf(os.Stderr, "WARNING: could not persists last apply state to last-apply.json: %v\n", err)
 		}
 	}
