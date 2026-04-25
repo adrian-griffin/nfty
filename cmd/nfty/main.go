@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"flag"
 	"fmt"
 	"os"
@@ -72,6 +73,13 @@ func main() {
 	}
 }
 
+// calculate checksum/hash off of nft config
+// first 8 chars only
+func scriptChecksum(script string) string {
+	h := sha256.Sum256([]byte(script))
+	return fmt.Sprintf("%x", h[:4])
+}
+
 // applies parsed config as active nftables ruleset
 func runApply(args []string) {
 	// sort args
@@ -104,16 +112,6 @@ func runApply(args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("loaded config: %s (%s)\n", cfg.Core.Name, cfg.Core.Description)
-
-	// warn loudly for skip-confirms
-	if *skipConfirm {
-		fmt.Fprintln(os.Stderr, "WARNING: --skip-confirm disabled automatic rollback. if the ruleset is bad, you WILL be locked out")
-		// [TODO]: add `y` approval for pushing if skip-confirm is passed
-	}
-
-	// [TODO]: run safety checks (safety package)
-
 	// generate nft script
 	script, err := rules.Generate(cfg)
 	if err != nil {
@@ -126,6 +124,8 @@ func runApply(args []string) {
 		fmt.Fprintf(os.Stderr, "nft syntax validation failed: %v\n", err)
 		os.Exit(1)
 	}
+
+	checksum := scriptChecksum(script)
 
 	// end dry-run attempt here
 	if *dryRun {
@@ -153,52 +153,96 @@ func runApply(args []string) {
 		os.Exit(1)
 	}
 
-	// formally apply generated NFT config
-	if err := nft.ApplyScript(script); err != nil {
-		fmt.Fprintf(os.Stderr, "apply failed: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println("ruleset applied successfully")
+	// [TODO]: run safety checks (safety package)
 
-	// skip-confirm: persist immediately, no timer
+	fmt.Printf("  %s %s %s\n", colour.Grey("loaded config:"), cfg.Core.Name, colour.DarkGrey(cfg.Core.Description))
+	fmt.Printf("  %s\n", colour.Grey("if not confirmed (due to lockout, terminated ssh session, etc), firewall will revert to previous known good state"))
+	fmt.Printf("  %s %s\n", colour.Grey("checksum:"), colour.DarkGrey(checksum))
+
+	divider()
+
+	// warn loudly if skip-confirm passed
 	if *skipConfirm {
-		fmt.Fprintln(os.Stderr, "WARNING: --skip-confirm used, automatic lockout prevention & rollback is disabled")
+		fmt.Printf("  %s\n", colour.Red("⚠ WARNING: --skip-confirm is active"))
+
+		fmt.Printf("    %s %s\n",
+			colour.Grey("automatic rollback is disabled. if this ruleset is bad, you can"),
+			colour.Red("be locked out"),
+		)
+		divider()
+		// TODO: POLL FOR 'y/n'
+
+		// formally apply generated NFT config
+		if err := nft.ApplyScript(script); err != nil {
+			fmt.Fprintf(os.Stderr, "apply failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("%s\n", colour.Green("✓ ruleset applied and committed"))
+
+		// skip-confirm: persist immediately, no timer
 		if cfg.Core.Persist {
 			if err := commit.SaveRunningRuleset(script); err != nil {
 				fmt.Fprintf(os.Stderr, "failed to persist ruleset: %v\n", err)
 			}
 		}
-		return
-	}
 
-	// write pending state to .json file on disk
-	if err := commit.WritePending(configPath, *confirmSeconds); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to write pending state: %v\n", err)
-		os.Exit(1)
-	}
+		fmt.Printf("  %s  %s\n",
+			colour.Grey("run "+colour.Cyan("nfty rollback")+" to revert"),
+			colour.Grey("·  "+colour.Cyan("nfty counters")+" for statistics"),
+		)
+	} else {
+		// formally apply generated NFT config
+		if err := nft.ApplyScript(script); err != nil {
+			fmt.Fprintf(os.Stderr, "apply failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("  %s\n", colour.Green("✓ ruleset applied - awaiting confirm"))
+		divider()
 
-	// schedule systemd rollback timer
-	nftyPath, _ := os.Executable()
-	if err := commit.ScheduleRollback(*confirmSeconds, nftyPath); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to schedule rollback timer: %v\n", err)
-		fmt.Fprintln(os.Stderr, "WARNING: auto-rollback is NOT active. please confirm or manually rollback") // maybe kill process?
-	}
+		// write pending state to .json file on disk
+		if err := commit.WritePending(configPath, checksum, *confirmSeconds); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to write pending state: %v\n", err)
+			os.Exit(1)
+		}
 
-	fmt.Printf("\nrun 'nfty confirm' within %d seconds to approve changes\n", *confirmSeconds)
-	fmt.Println("if not confirmed (due to lockout, terminated ssh session, etc), firewall will revert to previous known good state")
+		// schedule systemd rollback timer
+		nftyPath, _ := os.Executable()
+		if err := commit.ScheduleRollback(*confirmSeconds, nftyPath); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to schedule rollback timer: %v\n", err)
+			fmt.Fprintln(os.Stderr, "WARNING: auto-rollback is NOT active. please confirm or manually rollback") // maybe kill process?
+		}
+
+		// output confirmation details
+		deadline := time.Now().Add(time.Duration(*confirmSeconds) * time.Second)
+		fmt.Printf("  %s%s %s\n",
+			label("confirm window"),
+			colour.Yellow(fmt.Sprintf("%ds", *confirmSeconds)),
+			colour.DarkGrey("(expires "+deadline.Format("15:04:05")+")"),
+		)
+
+		fmt.Printf("  %s%s\n", label("rollback via"), colour.Grey("systemd timer - survives shell death"))
+
+		fmt.Printf("  %s  %s  %s\n",
+			colour.Grey("run "+colour.Cyan("nfty confirm")+" to approve"),
+			colour.Grey("·  "+colour.Cyan("nfty rollback")+" to undo"),
+			colour.Grey("·  "+colour.Cyan("nfty status")+" for more info"),
+		)
+	}
 }
 
 // perform change-approval/confirmation logic
 func runConfirm() {
 	if !commit.IsPending() {
-		fmt.Println("there is nothing to confirm and no pending apply state")
+		fmt.Println(colour.Grey("there are no pending changes to confirm"))
 		return
 	}
 
 	state, err := commit.LoadPending()
 	if err == nil {
-		fmt.Printf("confirming application of: %s\n", state.ConfigPath)
-		fmt.Printf("applied by: %s at %s\n", state.AppliedBy, state.AppliedAt.Format("15:04:05"))
+		fmt.Printf("%s%s\n", label("confirming"), colour.Blue(state.ConfigPath))
+		fmt.Printf("%s%s (%s)\n", label("applied by"), colour.Grey(state.AppliedBy), colour.DarkGrey(state.AppliedAt.Format("15:04:05")))
+		fmt.Printf("  %s %s\n", colour.Grey("checksum:"), colour.DarkGrey(state.Checksum))
+		divider()
 	}
 
 	// cancel systemd execution timer
@@ -222,7 +266,11 @@ func runConfirm() {
 	}
 
 	commit.ClearPending()
-	fmt.Println("ruleset committed and confirmed")
+	fmt.Printf("%s\n", colour.Green("✓ ruleset applied and committed"))
+	fmt.Printf("%s  %s\n",
+		colour.Grey("rollback timer cancelled"),
+		colour.Grey("·  "+"pending state cleared"),
+	)
 }
 
 // perform rollback functionality if pending state is detected
@@ -231,7 +279,12 @@ func runRollbackIfPending() {
 		return
 	}
 
-	fmt.Println("nfty: commit-confirm timed out, reverting firewall config to previous know good state")
+	fmt.Printf("%s\n", colour.DarkGrey("[ systemd: nfty-rollback.timer fired ]"))
+
+	fmt.Printf("%s\n", colour.Red("commit-confirm timer expired"))
+	fmt.Printf("%s\n", colour.Grey("reverting to previous known good state"))
+	divider()
+	fmt.Printf("%s\n", colour.Green("✓ previous ruleset restored"))
 
 	snapshot, err := commit.LoadRollbackSnapshot()
 	if err != nil {
@@ -318,12 +371,12 @@ const labelWidth = 18
 
 // return grey for left-column labels
 func label(s string) string {
-	return colour.White(fmt.Sprintf("%-*s", labelWidth, s))
+	return colour.Grey(fmt.Sprintf("%-*s", labelWidth, s))
 }
 
 // writes section divier
 func divider() {
-	fmt.Println(colour.White("  " + strings.Repeat("─", 52)))
+	fmt.Println(colour.Grey("  " + strings.Repeat("─", 52)))
 }
 
 // gathers file path & last-edited time
@@ -380,7 +433,7 @@ func runStatus() {
 		colour.Grey("nfty"),
 		colour.Bold("status"),
 		strings.Repeat(" ", 15),
-		colour.Grey(hostname+" · "+now),
+		colour.DarkGrey(hostname+" · "+now),
 	)
 	fmt.Println()
 
@@ -397,8 +450,9 @@ func runStatus() {
 
 			// detail rows
 			fmt.Printf("    %s%s\n", label("config"), colour.Blue(state.ConfigPath))
-			fmt.Printf("    %s%s\n", label("applied by"), colour.White(state.AppliedBy))
-			fmt.Printf("    %s%s\n", label("applied at"), colour.White(state.AppliedAt.Format("15:04:05")))
+			fmt.Printf("    %s%s\n", label("checksum"), colour.Blue(state.Checksum))
+			fmt.Printf("    %s%s\n", label("applied by"), colour.Grey(state.AppliedBy))
+			fmt.Printf("    %s%s\n", label("applied at"), colour.Grey(state.AppliedAt.Format("15:04:05")))
 
 			// deadline turns red when <10s
 			if remaining > 0 {
@@ -410,46 +464,48 @@ func runStatus() {
 					label("deadline"),
 					deadlinecolour(remaining.String()+" remaining"),
 					// expiry time stays grey
-					colour.White("(expires "+state.Deadline.Format("15:04:05")+")"),
+					colour.DarkGrey("(expires "+state.Deadline.Format("15:04:05")+")"),
 				)
 			} else {
-				fmt.Printf("    %s%s\n", label("deadline"), colour.Red("expired (rollback likely in progress)"))
+				fmt.Printf("    %s%s\n", label("deadline"), colour.Red("expired (rollback in progress)"))
 			}
 
-			fmt.Printf("    %s%s\n", label("rollback via"), colour.White("systemd timer - survives shell death"))
+			fmt.Printf("    %s%s\n", label("rollback via"), colour.Grey("systemd timer - survives shell death"))
 		}
 	} else {
 		fmt.Printf("  %s\n", colour.Green("✓ no pending changes"))
 
 		// show last confirmed apply
 		if last, err := commit.LoadLastApply(); err == nil {
-			fmt.Printf("    %s%s\n", label("last apply by"), colour.White(last.AppliedBy))
+			fmt.Printf("    %s%s\n", label("last apply by"), colour.Grey(last.AppliedBy))
 			fmt.Printf("    %s%s %s\n",
 				label("last apply at"),
-				colour.White(last.ConfirmedAt.Format("15:04:05")),
-				colour.Grey(last.ConfirmedAt.Format("(2006-01-02)")),
+				colour.Grey(last.ConfirmedAt.Format("15:04:05")),
+				colour.DarkGrey(last.ConfirmedAt.Format("(2006-01-02)")),
 			)
+			fmt.Printf("    %s%s\n", label("checksum"), colour.DarkGrey(last.Checksum))
 		}
 	}
 
 	divider()
 
 	// ~~ status/state files
-	fmt.Printf("  %s\n", colour.White("state files"))
+	fmt.Printf("  %s\n", colour.Grey("state files"))
 
-	// build transient struct for both filetypes
+	// build transient struct for each statefile
 	for _, f := range []struct {
 		label string
 		path  string
 	}{
 		{"running.nft", commit.RunningFile},
 		{"rollback.nft", commit.RollbackFile},
+		{"last-apply.json", commit.LastApplyFile},
 	} {
 		if _, err := os.Stat(f.path); err == nil {
 			finfo := fileInfo(f.path)
 			fmt.Printf("    %s%s", label(f.label), colour.Green("present"))
 			if finfo != "" {
-				fmt.Printf(" %s", colour.White("- "+finfo))
+				fmt.Printf(" %s", colour.Grey("- "+finfo))
 			}
 			fmt.Println()
 		} else {
@@ -470,7 +526,7 @@ func runStatus() {
 	ruleset := string(out)
 	tables, chains, ruleCount := countNftObjects(ruleset)
 
-	fmt.Printf("  %s\n", colour.White("active ruleset"))
+	fmt.Printf("  %s\n", colour.Grey("active ruleset"))
 	fmt.Printf("    %s%d\n", label("tables"), tables)
 	fmt.Printf("    %s%d\n", label("chains"), chains)
 	fmt.Printf("    %s%d\n", label("rules"), ruleCount)
@@ -479,14 +535,14 @@ func runStatus() {
 	if commit.IsPending() {
 		divider()
 		fmt.Printf("  %s  %s\n",
-			colour.White("run "+colour.Cyan("nfty confirm")+" to approve"),
-			colour.White("·  "+colour.Cyan("nfty rollback")+" to undo"),
+			colour.Grey("run "+colour.Cyan("nfty confirm")+" to approve"),
+			colour.Grey("·  "+colour.Cyan("nfty rollback")+" to undo"),
 		)
 	} else {
 		divider()
 		fmt.Printf("  %s  %s\n",
-			colour.White("run "+colour.Cyan("nfty counters")+" for stastics"),
-			colour.White("·  "+colour.Cyan("nfty status --list-ruleset")+" for full firewall"),
+			colour.Grey("run "+colour.Cyan("nfty counters")+" for statistics"),
+			colour.Grey("·  "+colour.Cyan("nfty status --list-ruleset")+" for full firewall"),
 		)
 	}
 
@@ -494,7 +550,9 @@ func runStatus() {
 	if *listRuleset {
 		fmt.Println()
 		divider()
-		fmt.Println(colour.White("--- live nftables ruleset ---"))
+		fmt.Println()
+		fmt.Println(colour.Grey("--- live nftables ruleset ---"))
+		fmt.Println()
 		fmt.Print(ruleset)
 	}
 }
@@ -563,6 +621,10 @@ func countNftObjects(ruleset string) (tables, chains, rules int) {
 
 // grabs previous snapshot and applies it
 func runRollback() {
+
+	fmt.Printf("%s\n", colour.Yellow("↺ rolling back to previous ruleset"))
+	divider()
+
 	snapshot, err := commit.LoadRollbackSnapshot()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "rollback failed: %v\n", err)
@@ -580,7 +642,11 @@ func runRollback() {
 		commit.ClearPending()
 	}
 
-	fmt.Println("rolled back to previous ruleset")
+	fmt.Printf("%s\n", colour.Green("✓ previous ruleset restored"))
+	fmt.Printf("%s  %s\n",
+		colour.Grey("rollback timer cancelled"),
+		colour.Grey("·  "+"pending state cleared"),
+	)
 }
 
 // reapplies last known good ruleset (used by systemd on boot)

@@ -24,6 +24,7 @@ type PendingState struct {
 	AppliedBy  string    `json:"applied_by"`
 	AppliedAt  time.Time `json:"applied_at"`
 	Deadline   time.Time `json:"deadline"`
+	Checksum   string    `json:"checksum"`
 }
 
 // same deal for last-apply.json output
@@ -32,6 +33,7 @@ type LastApply struct {
 	AppliedBy   string    `json:"applied_by"`
 	AppliedAt   time.Time `json:"applied_at"`
 	ConfirmedAt time.Time `json:"confirmed_at"`
+	Checksum    string    `json:"checksum"`
 }
 
 // ensure nfty homedir exists
@@ -70,7 +72,7 @@ func LoadRunningRuleset() (string, error) {
 
 // creates .json file for tracking pending confirm changes
 // writes some metadata
-func WritePending(configPath string, deadlineSeconds int) error {
+func WritePending(configPath, checksum string, deadlineSeconds int) error {
 	now := time.Now()
 
 	user := os.Getenv("SUDO_USER")
@@ -85,6 +87,7 @@ func WritePending(configPath string, deadlineSeconds int) error {
 		AppliedBy:  os.Getenv("USER"),
 		AppliedAt:  now,
 		Deadline:   now.Add(time.Duration(deadlineSeconds) * time.Second),
+		Checksum:   checksum,
 	}
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {

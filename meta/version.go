@@ -1,6 +1,6 @@
 package meta
 
 const (
-	Version = "v0.2.3"
-	MOTD    = "happiness never decreases by being shared"
+	Version = "v0.2.5"
+	MOTD    = "i see you are // reading my mind // back to me"
 )
