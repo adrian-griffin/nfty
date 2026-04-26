@@ -25,9 +25,6 @@ func main() {
 		case "version":
 			fmt.Printf("nfty  ~  version: %s\n", meta.Version)
 			os.Exit(0)
-		case "check":
-			runCheck(os.Args[2:])
-			os.Exit(0)
 		}
 	}
 
@@ -68,6 +65,9 @@ func main() {
 		runCounters()
 	case "diff":
 		diff.RunDiff(os.Args[2:])
+	case "check":
+		runCheck(os.Args[2:])
+		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		printUsage()
@@ -82,7 +82,6 @@ func runApply(args []string) {
 	// define new flagset for apply sub-options
 	flagSet := flag.NewFlagSet("apply", flag.ExitOnError)
 	// sub-option flags for apply set
-	dryRun := flagSet.Bool("dry-run", false, "show diffs, no changes")
 	skipConfirm := flagSet.Bool("skip-confirm", false, "skip automatic rollback (dangerous)")
 	confirmSeconds := flagSet.Int("commit-confirm", 30, "rollback timer in seconds (30s default)")
 	flagSet.Parse(args)
@@ -90,7 +89,7 @@ func runApply(args []string) {
 	// if supplied .toml is empty err & exit
 	configPath := flagSet.Arg(0)
 	if configPath == "" {
-		fmt.Fprintln(os.Stderr, "usage: nfty apply [--dry-run] [--skip-confirm] [--commit-confirm <seconds>] <config.toml>")
+		fmt.Fprintln(os.Stderr, "usage: nfty apply [--skip-confirm] [--commit-confirm <seconds>] <config.toml>")
 		os.Exit(1)
 	}
 
@@ -135,14 +134,6 @@ func runApply(args []string) {
 	}
 
 	checksum := rules.ScriptChecksum(script)
-
-	// end dry-run attempt here
-	if *dryRun {
-		fmt.Println("\ndry-run mode. no changes applied")
-		fmt.Println("--- generated nftables script ---")
-		fmt.Print(script)
-		os.Exit(0)
-	}
 
 	// ensure /var/nfty/ exists
 	if err := commit.CheckDir(); err != nil {
@@ -205,6 +196,10 @@ func runApply(args []string) {
 					if err := commit.SaveRunningRuleset(script); err != nil {
 						fmt.Fprintf(os.Stderr, "failed to persist ruleset: %v\n", err)
 					}
+				}
+
+				if err := commit.WriteLastApplyDirect(configPath, checksum); err != nil {
+					fmt.Fprintf(os.Stderr, "WARNING: could not save last apply state: %v\n", err)
 				}
 
 			case "n":
@@ -359,11 +354,25 @@ func runCheck(args []string) {
 	listNFTRules := fs.Bool("list-ruleset", false, "print generated nftables script from nfty toml")
 	fs.Parse(args)
 
-	// if flag is ??, output usage help message
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "usage: nfty check [--list-ruleset] <config.toml>")
 		os.Exit(1)
 	}
+
+	// hostname for the header line
+	hostname, _ := os.Hostname()
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	// execution header
+	fmt.Printf("  %s %s%s%s\n",
+		colour.Grey("nfty"),
+		colour.Bold("check"),
+		strings.Repeat(" ", 15),
+		colour.DarkGrey(hostname+" · "+now),
+	)
+	fmt.Println()
+
+	divider()
 
 	// load config
 	configPath := fs.Arg(0) // fixed to grab first non-flag arg, rather than raw first flag
@@ -373,16 +382,32 @@ func runCheck(args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Check OK\n")
-	fmt.Printf("Config Name: %s (%s)\n", cfg.Core.Name, cfg.Core.Description)
-	fmt.Printf("  table:         %s\n", cfg.Core.Table)
-	fmt.Printf("  docker_compat: %v\n", cfg.Core.DockerCompat)
-	fmt.Printf("  persist:       %v\n", cfg.Core.Persist)
-	fmt.Printf("  default_rules: %v\n", cfg.Core.DefaultRules)
-	fmt.Printf("\n")
-	fmt.Printf("  icmpv4_limit:  %v\n", cfg.Core.ICMPv4Limit)
-	fmt.Printf("  icmpv6_limit:  %v\n", cfg.Core.ICMPv6Limit)
-	fmt.Printf("  log_ssh_fails: %v\n", cfg.Core.LogSSHFails)
+	// generate nft ruleset from toml config
+	script, err := rules.Generate(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rule generation failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// validate script syntax with nft
+	if err := nft.ValidateScript(script); err != nil {
+		fmt.Fprintf(os.Stderr, "nft syntax validation failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("  %s\n", colour.Green("✓ config validation success"))
+
+	fmt.Printf("    %s%s\n", label("name"), cfg.Core.Name)
+	fmt.Printf("    %s%s\n", label("table"), cfg.Core.Table)
+	fmt.Printf("    %s%v\n", label("docker_compat"), cfg.Core.DockerCompat)
+	fmt.Printf("    %s%v\n", label("persist"), cfg.Core.Persist)
+	fmt.Printf("    %s%v\n", label("default_rules"), cfg.Core.DefaultRules)
+	fmt.Printf("    %s%v\n", label("log_ssh_fails"), cfg.Core.LogSSHFails)
+
+	fmt.Println()
+	fmt.Printf("  %s%s\n", label("checksum"), colour.DarkGrey(rules.ScriptChecksum(script)))
+
+	divider()
 
 	// count rules per chain for a quick summary
 	v4in := len(cfg.Chains.IPv4.Input)
@@ -394,22 +419,19 @@ func runCheck(args []string) {
 	v6out := len(cfg.Chains.IPv6.Output)
 	v6post := len(cfg.Chains.IPv6.Postrouting)
 
-	fmt.Printf("  ipv4 rules:    %d input, %d forward, %d output, %d postrouting\n", v4in, v4fwd, v4out, v4post)
-	fmt.Printf("  ipv6 rules:    %d input, %d forward, %d output, %d postrouting\n", v6in, v6fwd, v6out, v6post)
+	fmt.Printf("  %s%s\n", label("ipv4"), fmt.Sprintf("%d in, %d fwd, %d out, %d post\n", v4in, v4fwd, v4out, v4post))
+	fmt.Printf("  %s%s\n", label("ipv6"), fmt.Sprintf("%d in, %d fwd, %d out, %d post\n", v6in, v6fwd, v6out, v6post))
 
-	// count lists
-	fmt.Printf("  ipv4 address lists:     %d\n", len(cfg.Lists.IPv4))
-	fmt.Printf("  ipv6 address lists:     %d\n", len(cfg.Lists.IPv6))
+	fmt.Printf("  %s%s\n", label("address lists"), fmt.Sprintf("%d ipv4, %d ipv6", len(cfg.Lists.IPv4), len(cfg.Lists.IPv6)))
+
+	divider()
+
+	fmt.Println()
 
 	// if list-ruleset run, output spacer & generated NFTables config
 	if *listNFTRules {
-		fmt.Println("\n--- generated nftables script ---\n")
-		// perform nfty -> nftables conversion and print output script
-		script, err := rules.Generate(cfg)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "rule generation failed: %v\n", err)
-			os.Exit(1)
-		}
+		fmt.Println("--- generated nftables script ---")
+		fmt.Println()
 		fmt.Print(script)
 	}
 }
@@ -605,12 +627,12 @@ func runStatus() {
 	}
 }
 
-// cuts string to maxLen, adds "…"
+// cuts string to maxLen, adds "..."
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen-1] + "..."
+	return s[:maxLen-3] + "..."
 }
 
 // runs counters parsing and displays output
@@ -639,7 +661,7 @@ func runCounters() {
 	)
 	fmt.Println()
 
-	const commentWidth = 45
+	const commentWidth = 50
 
 	// header
 	currentFamily := ""
@@ -749,19 +771,19 @@ func printUsage() {
 	fmt.Println("usage: nfty <command> [options]")
 	fmt.Println()
 	fmt.Println("commands:")
-	fmt.Println("  apply <config.toml>              apply config with safety checks")
-	fmt.Println("      --dry-run                      run apply without saving changes")
+	fmt.Println("  version                          show version info")
+	fmt.Println("  check <config.toml>              validate config")
+	fmt.Println("      --list-ruleset                 list target's NFT ruleset output")
+	fmt.Println("  status                           show current status")
+	fmt.Println("      --list-ruleset                 list current NFT ruleset output")
+	fmt.Println("  diff <config.toml>               show changes against current ruleset")
+	fmt.Println("  apply <config.toml>              apply target config")
 	fmt.Println("      --commit-confirm <seconds>     set rollback timer (default: 30)")
 	fmt.Println("      --skip-confirm                 skip rollback timer (dangerous)")
-	fmt.Println("  check <config.toml>              validate config")
-	fmt.Println("      --list-ruleset                 list NFT ruleset output")
-	fmt.Println("  status                           show current status")
-	fmt.Println("      --list-ruleset                 list NFT ruleset output")
-	fmt.Println("  diff <config.toml>               show changes against current ruleset")
-	fmt.Println("  confirm                          confirm applied config")
+	fmt.Println("  confirm                          confirm pending config")
 	fmt.Println("  rollback                         revert to previous rule snapshot")
 	fmt.Println("  counters                         display counters/statistics")
-	fmt.Println("  version                          show version info")
+
 }
 
 // reorders flag args to allow dynamic flag inputs from user

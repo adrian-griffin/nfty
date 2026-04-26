@@ -140,6 +140,31 @@ func WriteLastApply(state *PendingState) error {
 	return os.WriteFile(LastApplyFile, data, 0600)
 }
 
+// writes a last-apply record without an existing pending state
+// used by --skip-confirm where no pending.json is ever created
+func WriteLastApplyDirect(configPath, checksum string) error {
+	user := os.Getenv("SUDO_USER")
+	if user == "" {
+		user = os.Getenv("USER")
+		if user == "" {
+			return fmt.Errorf("failed to collect active user information")
+		}
+	}
+
+	record := LastApply{
+		ConfigPath:  configPath,
+		AppliedBy:   user,
+		AppliedAt:   time.Now(),
+		ConfirmedAt: time.Now(),
+		Checksum:    checksum,
+	}
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(LastApplyFile, data, 0600)
+}
+
 // reads/loads last apply state file
 func LoadLastApply() (*LastApply, error) {
 	data, err := os.ReadFile(LastApplyFile)

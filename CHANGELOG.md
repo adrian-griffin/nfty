@@ -4,9 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.3.1] - 2026-Apr-25
+## [0.3.2] - 2026-Apr-26
 - diff colourization
 - nft config generation sort and formatting overhauls for more stable diffing
+- diff stability fixes
+- chain priority bugfix
+- fixed failure to write json to disk if --skip-confirm passed
+- `nfty check <.toml>` format and validation logic overhauls
+- did away with `apply --dry-run`
 
 ## [0.3.0] - 2026-Apr-25
 - status, apply, confirm, etc. output ui/format overhaul
