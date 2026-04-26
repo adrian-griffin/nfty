@@ -1,4 +1,4 @@
-package rules
+package nft
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/adrian-griffin/nfty/config"
+	"github.com/adrian-griffin/nfty/internal/config"
 )
 
 // builds nftables output config in the following general design:

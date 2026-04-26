@@ -1,10 +1,15 @@
-package counters
+package core
 
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
+	"time"
 
-	"github.com/adrian-griffin/nfty/nft"
+	"github.com/adrian-griffin/nfty/internal/colour"
+	"github.com/adrian-griffin/nfty/internal/nft"
+	"github.com/adrian-griffin/nfty/internal/tools"
 )
 
 // struct to hold each rules info
@@ -131,4 +136,55 @@ func FormatPackets(p uint64) string {
 		result = append(result, byte(c))
 	}
 	return string(result)
+}
+
+// runs counters parsing and displays output
+func RunCounters() {
+	counts, err := ParseCounters()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to read counters: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(counts) == 0 {
+		fmt.Println("no nfty counters found, try re-applying nfty config")
+		return
+	}
+
+	// hostname for the header line
+	hostname, _ := os.Hostname()
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	// execution header
+	fmt.Printf("  %s %s%s%s\n",
+		colour.Grey("nfty"),
+		colour.Bold("counters"),
+		strings.Repeat(" ", 15),
+		colour.DarkGrey(hostname+" · "+now),
+	)
+	fmt.Println()
+
+	const commentWidth = 50
+
+	// header
+	currentFamily := ""
+	fmt.Print(colour.Bold(colour.Greyf("\n  %-*s %12s %10s\n", commentWidth, "RULE", "PACKETS", "BYTES")))
+	fmt.Print(colour.Greyf("  %-*s %12s %10s\n", commentWidth, strings.Repeat("─", commentWidth), strings.Repeat("─", 12), strings.Repeat("─", 10)))
+
+	for _, c := range counts {
+		// print family/chain header when it changes
+		familyChain := c.Family + " " + c.Chain
+		if familyChain != currentFamily {
+			fmt.Print(colour.Bold(colour.Greyf("\n  [%s/%s]\n", c.Family, c.Chain)))
+			currentFamily = familyChain
+		}
+
+		// pad prior to ansi colouring
+		padded := fmt.Sprintf("%-*s", commentWidth, tools.Truncate(c.Comment, commentWidth))
+		fmt.Printf("    %s %12s %10s\n",
+			colour.Grey(padded),
+			FormatPackets(c.Packets),
+			FormatBytes(c.Bytes))
+	}
+	fmt.Println()
 }

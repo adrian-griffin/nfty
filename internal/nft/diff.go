@@ -1,4 +1,4 @@
-package diff
+package nft
 
 import (
 	"flag"
@@ -9,10 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adrian-griffin/nfty/colour"
-	"github.com/adrian-griffin/nfty/config"
-	"github.com/adrian-griffin/nfty/nft"
-	"github.com/adrian-griffin/nfty/rules"
+	"github.com/adrian-griffin/nfty/internal/colour"
+	"github.com/adrian-griffin/nfty/internal/config"
 )
 
 // writes section divier
@@ -171,19 +169,19 @@ func RunDiff(args []string) {
 	}
 
 	// generate nftables from nfty
-	proposed, err := rules.Generate(cfg)
+	proposed, err := Generate(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  rule generation failed: %v\n", err)
 		os.Exit(1)
 	}
 
 	// validate nftables syntax before diff
-	if err := nft.ValidateScript(proposed); err != nil {
+	if err := ValidateScript(proposed); err != nil {
 		fmt.Fprintf(os.Stderr, "  nft syntax validation failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	proposedChecksum := rules.ScriptChecksum(proposed)
+	proposedChecksum := ScriptChecksum(proposed)
 
 	// check against last-apply checksum (should be the same always lol)
 	// maybe will re-activate later, but disabled for debug purposes
@@ -198,12 +196,12 @@ func RunDiff(args []string) {
 
 	// get current NFTables live ruleset
 	// nfty IP Tables only
-	ipTable, err := nft.ListTable("ip", cfg.Core.Table)
+	ipTable, err := ListTable("ip", cfg.Core.Table)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  could not read live table ip %s: %v\n", cfg.Core.Table, err)
 		os.Exit(1)
 	}
-	ip6Table, err := nft.ListTable("ip6", cfg.Core.Table)
+	ip6Table, err := ListTable("ip6", cfg.Core.Table)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  could not read live table ip6 %s: %v\n", cfg.Core.Table, err)
 		os.Exit(1)
