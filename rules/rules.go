@@ -54,30 +54,36 @@ const (
 // `filter 10` -> `filter + 10`
 // `nat 100`   -> `srcnat`
 // `filter 0`  -> `filter`
-func formatPriority(chainType string, priority int) string {
-	// map chain types to their default/nft priority name and # value
-	bases := map[string]struct {
-		name   string
-		offset int
-	}{
-		"filter": {"filter", 0},
-		"nat":    {"srcnat", 0}, // postrouting nat uses srcnat as base
+func formatPriority(chainType, hook string, priority int) string {
+	// nft-named prio bases by chain + hook
+	type base struct {
+		name  string
+		value int
 	}
 
-	base, ok := bases[chainType]
+	// map by chainType:hook since nat has different bases per hook
+	bases := map[string]base{
+		"filter:input":    {"filter", 0},
+		"filter:forward":  {"filter", 0},
+		"filter:output":   {"filter", 0},
+		"nat:postrouting": {"srcnat", 100},
+		"nat:prerouting":  {"dstnat", -100},
+	}
+
+	key := chainType + ":" + hook
+	b, ok := bases[key]
 	if !ok {
-		// if unknown chain type, use the raw #
 		return fmt.Sprintf("%d", priority)
 	}
 
-	offset := priority - base.offset
+	offset := priority - b.value
 	if offset == 0 {
-		return base.name
+		return b.name
 	}
 	if offset > 0 {
-		return fmt.Sprintf("%s + %d", base.name, offset)
+		return fmt.Sprintf("%s + %d", b.name, offset)
 	}
-	return fmt.Sprintf("%s - %d", base.name, -offset)
+	return fmt.Sprintf("%s - %d", b.name, -offset)
 }
 
 // formats icmp protocols to nft-tables acceptable format
@@ -346,7 +352,7 @@ func buildChain(name string, chainType string, hook string, priority int,
 	var chainOutput strings.Builder
 
 	// format priority to match nft canonical output (eg 'filter + 10')
-	prioStr := formatPriority(chainType, priority)
+	prioStr := formatPriority(chainType, hook, priority)
 
 	// write chain declaration contents to chain block buffer
 	chainOutput.WriteString(fmt.Sprintf("\n%schain %s {\n", t1, name))
