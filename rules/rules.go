@@ -3,8 +3,10 @@ package rules
 import (
 	"crypto/sha256"
 	"fmt"
+	"net"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/adrian-griffin/nfty/config"
@@ -41,6 +43,51 @@ func ScriptChecksum(script string) string {
 	return fmt.Sprintf("%x", h[:4])
 }
 
+// nft-acceptable spacing/tabbing consts
+const (
+	t1 = "\t"
+	t2 = "\t\t"
+)
+
+// converts raw string passed chain priorities to nft-acceptal format
+// eg
+// `filter 10` -> `filter + 10`
+// `nat 100`   -> `srcnat`
+// `filter 0`  -> `filter`
+func formatPriority(chainType string, priority int) string {
+	// map chain types to their default/nft priority name and # value
+	bases := map[string]struct {
+		name   string
+		offset int
+	}{
+		"filter": {"filter", 0},
+		"nat":    {"srcnat", 0}, // postrouting nat uses srcnat as base
+	}
+
+	base, ok := bases[chainType]
+	if !ok {
+		// if unknown chain type, use the raw #
+		return fmt.Sprintf("%d", priority)
+	}
+
+	offset := priority - base.offset
+	if offset == 0 {
+		return base.name
+	}
+	if offset > 0 {
+		return fmt.Sprintf("%s + %d", base.name, offset)
+	}
+	return fmt.Sprintf("%s - %d", base.name, -offset)
+}
+
+// formats icmp protocols to nft-tables acceptable format
+func formatICMPProto(family string) string {
+	if family == "ip6" {
+		return "ipv6-icmp"
+	}
+	return "icmp"
+}
+
 // generates full nftables ruleset as a string from a nfty config
 func Generate(cfg *config.Config) (string, error) {
 	var nftablesOutput strings.Builder
@@ -73,39 +120,71 @@ func Generate(cfg *config.Config) (string, error) {
 	return nftablesOutput.String(), nil
 }
 
+// strips the /32 or /128 cidr suffix from single-host IPs
+// for diff purposes
+func normalizeAddr(addr string) string {
+	// if it doesn't contain a slash, it's already a bare host
+	if !strings.Contains(addr, "/") {
+		return addr
+	}
+
+	ip, ipNet, err := net.ParseCIDR(addr)
+	if err != nil {
+		return addr // cant parse, leave
+	}
+
+	// check if host bits are equal to total address bits (single-host)
+	ones, bits := ipNet.Mask.Size()
+	if ones == bits {
+		return ip.String() // strip ye cidr
+	}
+
+	return addr
+}
+
+// applies normalizeAddr to a slice and sorts output
+// for diff purposes
+func normalizeAddrs(addrs []string) []string {
+	normalized := make([]string, len(addrs))
+	for i, a := range addrs {
+		normalized[i] = normalizeAddr(a)
+	}
+	sort.Strings(normalized)
+	return normalized
+}
+
 // build out default input-chain rules
 func buildDefaultInputs(family string, core config.CoreConfig) []string {
 	var lines []string
 
 	// loopback
 	lines = append(lines,
-		"        iif \"lo\" counter accept comment \"nfty: allow loopback\"")
+		t2+"iif \"lo\" counter accept comment \"nfty: allow loopback\"")
 
 	// icmp and ratelimiting
-	icmpProto := "icmp"
+	icmpProto := formatICMPProto(family)
 	icmpLimit := core.ICMPv4Limit
 	if family == "ip6" {
-		icmpProto = "icmpv6"
 		icmpLimit = core.ICMPv6Limit
 	}
 
 	// handle if user-passed icmp limit(s) are empty
 	if icmpLimit != "" {
 		lines = append(lines,
-			fmt.Sprintf("        meta l4proto %s limit rate %s counter accept comment \"nfty: %s rate limit\"",
+			fmt.Sprintf(t2+"meta l4proto %s limit rate %s counter accept comment \"nfty: %s rate limit\"",
 				icmpProto, icmpLimit, icmpProto))
 
 		lines = append(lines,
-			fmt.Sprintf("        meta l4proto %s counter drop comment \"nfty: %s over limit\"",
+			fmt.Sprintf(t2+"meta l4proto %s counter drop comment \"nfty: %s over limit\"",
 				icmpProto, icmpProto))
 	}
 
 	// established, related input
 	lines = append(lines,
-		"        ct state established,related counter accept comment \"nfty: allow established\"")
+		t2+"ct state established,related counter accept comment \"nfty: allow established\"")
 	// drop invalids
 	lines = append(lines,
-		"        ct state invalid counter drop comment \"nfty: drop invalid\"")
+		t2+"ct state invalid counter drop comment \"nfty: drop invalid\"")
 
 	return lines
 }
@@ -113,17 +192,35 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 // build out default forward-chain rules
 func buildDefaultForwards() []string {
 	return []string{
-		"        ct state established,related counter accept comment \"nfty: allow established\"",
-		"        ct state invalid counter drop comment \"nfty: drop invalid\"",
+		t2 + "ct state established,related counter accept comment \"nfty: allow established\"",
+		t2 + "ct state invalid counter drop comment \"nfty: drop invalid\"",
 	}
 }
 
 // generates SSH log+drop ruleset
 func buildSSHLogRules() []string {
 	return []string{
-		"        tcp dport 22 counter log prefix \"NFTY DROP 22/TCP: \" level warn comment \"nfty: SSH log\"",
-		"        tcp dport 22 counter drop comment \"nfty: SSH drop\"",
+		t2 + "tcp dport 22 counter log prefix \"NFTY DROP 22/TCP: \" level warn comment \"nfty: SSH log\"",
+		t2 + "tcp dport 22 counter drop comment \"nfty: SSH drop\"",
 	}
+}
+
+// sorts PortVlaue slice
+// for diff purposes
+func sortPorts(ports []config.PortValue) []config.PortValue {
+	// claude knows whats up here but this is too abstract
+	// for my weak human meat brain
+	sorted := make([]config.PortValue, len(ports))
+	copy(sorted, ports)
+	sort.Slice(sorted, func(i, j int) bool {
+		// extract the first number from each port (handles ranges like "161-162")
+		iStr := strings.SplitN(sorted[i].String(), "-", 2)[0]
+		jStr := strings.SplitN(sorted[j].String(), "-", 2)[0]
+		iNum, _ := strconv.Atoi(iStr)
+		jNum, _ := strconv.Atoi(jStr)
+		return iNum < jNum
+	})
+	return sorted
 }
 
 // converts various dport formats (eg [22], [161-162], [443,80]) into NFTables-parsable syntax
@@ -133,15 +230,37 @@ func formatPort(ports []config.PortValue) string {
 		return ports[0].String()
 	}
 
+	// sort ports to match nft formatting
+	sorted := sortPorts(ports)
+
 	// multiple ports/ranges - wrap in curly braces
-	strs := make([]string, len(ports))
-	for i, p := range ports {
+	strs := make([]string, len(sorted))
+	for i, p := range sorted {
 		strs[i] = p.String()
 	}
 	return "{ " + strings.Join(strs, ", ") + " }"
 }
 
-// converts address-list sets or lists (eg src_list = "ssh", src_ips = [...]) into NFTables-parsable syntax
+// formats & sorts ip address sets for use in nftables
+// single addresses are bare (no braces), lists get braces
+// for diff purposes
+func formatAddrMatch(addrs []string, family, direction string) string {
+	prefix := "ip"
+	if family == "ip6" {
+		prefix = "ip6"
+	}
+
+	normalized := normalizeAddrs(addrs)
+
+	if len(normalized) == 1 {
+		// single address — bare, no braces (matches nft canonical output)
+		return fmt.Sprintf("%s %s %s", prefix, direction, normalized[0])
+	}
+
+	return fmt.Sprintf("%s %s { %s }", prefix, direction, strings.Join(normalized, ", "))
+}
+
+// converts SRC address-list sets or lists (eg src_list = "ssh", src_ips = [...]) into NFTables-parsable syntax
 // returns empty str if neither is set (ie allow on all src-addresses at the firewall lvl for that socket)
 func formatSrcMatch(rule config.Rule, family string) string {
 	// determine rule ip-family prefix
@@ -158,15 +277,15 @@ func formatSrcMatch(rule config.Rule, family string) string {
 	// return NFTables config for raw srcIP list
 	// creates an anonymous set in the rule itself
 	if len(rule.SrcIPs) > 0 {
-		return fmt.Sprintf("%s saddr { %s }", prefix, strings.Join(rule.SrcIPs, ", "))
+		return formatAddrMatch(rule.SrcIPs, family, "saddr")
 	}
 
 	// if nada, return blank string which will be interpreted as 0.0.0.0/0 or 0:: on NFT
 	return ""
 }
 
-// converts address-list sets or lists (eg src_list = "ssh", src_ips = [...]) into NFTables-parsable syntax
-// returns empty str if neither is set (ie allow on all src-addresses at the firewall lvl for that socket)
+// converts DST address-list sets or lists (eg src_list = "ssh", src_ips = [...]) into NFTables-parsable syntax
+// returns empty str if neither is set
 func formatDstMatch(rule config.Rule, family string) string {
 	// determine rule ip-family prefix
 	prefix := "ip"
@@ -179,10 +298,10 @@ func formatDstMatch(rule config.Rule, family string) string {
 		return fmt.Sprintf("%s daddr @%s", prefix, rule.DstList)
 	}
 
-	// return NFTables config for raw srcIP list
+	// return NFTables config for raw dstIP list
 	// creates an anonymous set in the rule itself
 	if len(rule.DstIPs) > 0 {
-		return fmt.Sprintf("%s daddr { %s }", prefix, strings.Join(rule.DstIPs, ", "))
+		return formatAddrMatch(rule.DstIPs, family, "daddr")
 	}
 
 	// if nada, return blank string which will be interpreted as 0.0.0.0/0 or 0:: on NFT
@@ -203,17 +322,19 @@ func formatLog(log *config.LogConfig) string {
 func buildSet(name string, list config.AddressList, addrType string) string {
 	var listOutput strings.Builder
 
-	listOutput.WriteString(fmt.Sprintf("\n    set %s {\n", name))
-	listOutput.WriteString(fmt.Sprintf("        type %s\n", addrType))
-	listOutput.WriteString("        flags interval\n")
-	listOutput.WriteString("        auto-merge\n")
+	listOutput.WriteString(fmt.Sprintf("\n%sset %s {\n", t1, name))
+	listOutput.WriteString(fmt.Sprintf("%stype %s\n", t2, addrType))
+	listOutput.WriteString(t2 + "flags interval\n")
+	listOutput.WriteString(t2 + "auto-merge\n")
 
 	if list.Comment != "" {
-		listOutput.WriteString(fmt.Sprintf("        comment \"%s\"\n", "nfty: "+list.Comment))
+		listOutput.WriteString(fmt.Sprintf("%scomment \"%s\"\n", t2, "nfty: "+list.Comment))
 	}
 
-	listOutput.WriteString(fmt.Sprintf("        elements = { %s }\n", strings.Join(list.Entries, ", ")))
-	listOutput.WriteString("    }\n")
+	// normalize and sort set elements to match nft canonical output
+	normalized := normalizeAddrs(list.Entries)
+	listOutput.WriteString(fmt.Sprintf("%selements = { %s }\n", t2, strings.Join(normalized, ", ")))
+	listOutput.WriteString(t1 + "}\n")
 
 	return listOutput.String()
 }
@@ -224,10 +345,13 @@ func buildChain(name string, chainType string, hook string, priority int,
 
 	var chainOutput strings.Builder
 
+	// format priority to match nft canonical output (eg 'filter + 10')
+	prioStr := formatPriority(chainType, priority)
+
 	// write chain declaration contents to chain block buffer
-	chainOutput.WriteString(fmt.Sprintf("\n    chain %s {\n", name))
-	chainOutput.WriteString(fmt.Sprintf("        type %s hook %s priority %d; policy %s;\n",
-		chainType, hook, priority, policy))
+	chainOutput.WriteString(fmt.Sprintf("\n%schain %s {\n", t1, name))
+	chainOutput.WriteString(fmt.Sprintf("%stype %s hook %s priority %s; policy %s;\n",
+		t2, chainType, hook, prioStr, policy))
 
 	// inject each rule line
 	for _, line := range ruleLines {
@@ -235,7 +359,7 @@ func buildChain(name string, chainType string, hook string, priority int,
 	}
 
 	// wrap 'er up
-	chainOutput.WriteString("    }\n")
+	chainOutput.WriteString(t1 + "}\n")
 	return chainOutput.String()
 }
 
@@ -295,20 +419,19 @@ func buildRateLimitLines(matchParts []string, rule config.Rule) []string {
 	if rule.Comment != "" {
 		underParts = append(underParts, fmt.Sprintf("comment \"%s\"", "nfty: "+rule.Comment))
 	}
-	lines = append(lines, "        "+strings.Join(underParts, " "))
+	lines = append(lines, t2+strings.Join(underParts, " "))
 
-	// over-limit handling
 	if rule.OverLimit != "" {
 		overParts := append([]string{}, matchParts...)
 		overParts = append(overParts, "counter", rule.OverLimit)
-		lines = append(lines, "        "+strings.Join(overParts, " "))
+		lines = append(lines, t2+strings.Join(overParts, " "))
 	}
 
 	return lines
 }
 
 // builds out all the dynamic "matcher" portions of nft rules
-// <interface-match>     <socket/procol+port>    <src-address>   <conn state>
+// <interface-match>t1 <socket/procol+port>t1<src-address>   <conn state>
 // eg: ["iifname \"eth0\"", "tcp dport { 80, 443 }", "ip saddr @webui"]
 func buildMatchCriteria(rule config.Rule, proto string, family string) ([]string, error) {
 	var parts []string
@@ -340,7 +463,7 @@ func buildMatchCriteria(rule config.Rule, proto string, family string) ([]string
 		// or if icmp/icmp6, do `meta l4` writing
 	} else if proto == "icmp" || proto == "icmpv6" {
 		// "meta l4proto icmp" or "meta l4proto icmpv6"
-		parts = append(parts, fmt.Sprintf("meta l4proto %s", proto))
+		parts = append(parts, fmt.Sprintf("meta l4proto %s", formatICMPProto(family)))
 	}
 	// TODO: currently, if proto is "", skip protocol matching entirely
 
@@ -484,7 +607,7 @@ func buildRule(rule config.Rule, family string) ([]string, error) {
 		}
 
 		// merge all parts for return
-		results = append(results, "        "+strings.Join(parts, " "))
+		results = append(results, t2+strings.Join(parts, " "))
 	}
 
 	return results, nil
