@@ -109,7 +109,6 @@ func runApply(args []string) {
 		strings.Repeat(" ", 15),
 		colour.DarkGrey(hostname+" · "+now),
 	)
-	fmt.Println()
 
 	divider()
 
@@ -278,7 +277,6 @@ func runConfirm() {
 		strings.Repeat(" ", 15),
 		colour.DarkGrey(hostname+" · "+now),
 	)
-	fmt.Println()
 
 	divider()
 
@@ -370,7 +368,6 @@ func runCheck(args []string) {
 		strings.Repeat(" ", 15),
 		colour.DarkGrey(hostname+" · "+now),
 	)
-	fmt.Println()
 
 	divider()
 
@@ -405,7 +402,7 @@ func runCheck(args []string) {
 	fmt.Printf("    %s%v\n", label("log_ssh_fails"), cfg.Core.LogSSHFails)
 
 	fmt.Println()
-	fmt.Printf("  %s%s\n", label("checksum"), colour.DarkGrey(rules.ScriptChecksum(script)))
+	fmt.Printf("    %s%s\n", label("checksum"), colour.DarkGrey(rules.ScriptChecksum(script)))
 
 	divider()
 
@@ -419,8 +416,8 @@ func runCheck(args []string) {
 	v6out := len(cfg.Chains.IPv6.Output)
 	v6post := len(cfg.Chains.IPv6.Postrouting)
 
-	fmt.Printf("  %s%s\n", label("ipv4"), fmt.Sprintf("%d in, %d fwd, %d out, %d post\n", v4in, v4fwd, v4out, v4post))
-	fmt.Printf("  %s%s\n", label("ipv6"), fmt.Sprintf("%d in, %d fwd, %d out, %d post\n", v6in, v6fwd, v6out, v6post))
+	fmt.Printf("  %s%s\n", label("ipv4"), fmt.Sprintf("%d in, %d fwd, %d out, %d post", v4in, v4fwd, v4out, v4post))
+	fmt.Printf("  %s%s\n", label("ipv6"), fmt.Sprintf("%d in, %d fwd, %d out, %d post", v6in, v6fwd, v6out, v6post))
 
 	fmt.Printf("  %s%s\n", label("address lists"), fmt.Sprintf("%d ipv4, %d ipv6", len(cfg.Lists.IPv4), len(cfg.Lists.IPv6)))
 
@@ -728,7 +725,6 @@ func runRollback() {
 		strings.Repeat(" ", 15),
 		colour.DarkGrey(hostname+" · "+now),
 	)
-	fmt.Println()
 
 	divider()
 
