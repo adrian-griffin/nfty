@@ -15,6 +15,11 @@ import (
 	"github.com/adrian-griffin/nfty/rules"
 )
 
+// writes section divier
+func divider() {
+	fmt.Println(colour.Grey("  " + strings.Repeat("─", 52)))
+}
+
 // reorders flag args to allow dynamic flag inputs from user
 func sortFlags(args []string) []string {
 	var flags, positional []string
@@ -53,6 +58,27 @@ func stripPreamble(script string) string {
 	// trim leading blank lines left by removed preamble
 	result := strings.TrimLeft(strings.Join(lines, "\n"), "\n")
 	return result
+}
+
+// format and ansi colourize diff
+func colourizeDiff(diff string) string {
+	var out strings.Builder
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---"):
+			out.WriteString(colour.Bold(line))
+		case strings.HasPrefix(line, "+"):
+			out.WriteString(colour.Green(line))
+		case strings.HasPrefix(line, "-"):
+			out.WriteString(colour.Red(line))
+		case strings.HasPrefix(line, "@@"):
+			out.WriteString(colour.Cyan(line))
+		default:
+			out.WriteString(line)
+		}
+		out.WriteString("\n")
+	}
+	return out.String()
 }
 
 // diffs two configs by shelling out
@@ -104,12 +130,12 @@ func RunDiff(args []string) {
 	fs := flag.NewFlagSet("diff", flag.ExitOnError)
 	fs.Parse(args)
 
-	configPath := fs.Arg(0)
-
-	if configPath == "" {
+	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "usage: nfty diff <config.toml>")
 		os.Exit(1)
 	}
+
+	configPath := fs.Arg(0)
 
 	// hostname for the header line
 	hostname, _ := os.Hostname()
@@ -122,6 +148,8 @@ func RunDiff(args []string) {
 		colour.DarkGrey(hostname+" · "+now),
 	)
 	fmt.Println()
+
+	divider()
 
 	// load and generate the proposed config
 	cfg, err := config.Load(configPath)
@@ -143,6 +171,19 @@ func RunDiff(args []string) {
 		os.Exit(1)
 	}
 
+	proposedChecksum := rules.ScriptChecksum(proposed)
+
+	// check against last-apply checksum (should be the same always lol)
+	// maybe will re-activate later, but disabled for debug purposes
+	//
+	//if last, err := commit.LoadLastApply(); err == nil {
+	//	if proposedChecksum == last.Checksum {
+	//		fmt.Printf("  %s\n", colour.Green("✓ config matches current confirmed ruleset — no changes"))
+	//		fmt.Printf("  %s %s\n", colour.Grey("checksum:"), colour.DarkGrey(proposedChecksum))
+	//		return
+	//	}
+	//}
+
 	// get current NFTables live ruleset
 	// nfty IP Tables only
 	ipTable, err := nft.ListTable("ip", cfg.Core.Table)
@@ -159,6 +200,9 @@ func RunDiff(args []string) {
 	current := string(ipTable) + "\n" + string(ip6Table)
 
 	fmt.Printf("  %s %s %s\n", colour.Grey("config:"), cfg.Core.Name, colour.DarkGrey(cfg.Core.Description))
+	fmt.Printf("  %s %s\n", colour.Grey("checksum:"), colour.DarkGrey(proposedChecksum))
+
+	divider()
 
 	// run the diff
 	diffOutput, changed, err := diffScripts(
@@ -193,5 +237,7 @@ func RunDiff(args []string) {
 		colour.Red(fmt.Sprintf("-%d lines", removes)),
 	)
 	fmt.Println()
-	fmt.Print(diffOutput)
+
+	// colourize that ish
+	fmt.Print(colourizeDiff(diffOutput))
 }

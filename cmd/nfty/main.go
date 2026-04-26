@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
 	"flag"
 	"fmt"
 	"os"
@@ -76,13 +75,6 @@ func main() {
 	}
 }
 
-// calculate checksum/hash off of nft config
-// first 8 chars only
-func scriptChecksum(script string) string {
-	h := sha256.Sum256([]byte(script))
-	return fmt.Sprintf("%x", h[:4])
-}
-
 // applies parsed config as active nftables ruleset
 func runApply(args []string) {
 	// sort args
@@ -142,7 +134,7 @@ func runApply(args []string) {
 		os.Exit(1)
 	}
 
-	checksum := scriptChecksum(script)
+	checksum := rules.ScriptChecksum(script)
 
 	// end dry-run attempt here
 	if *dryRun {

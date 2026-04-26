@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"sort"
@@ -32,6 +33,13 @@ import (
 // |  user-defined rules (in order supplied)
 // |  log and extraneous rules
 // | EXTRA CHAINS
+
+// calculate checksum/hash off of nft config
+// first 8 chars only
+func ScriptChecksum(script string) string {
+	h := sha256.Sum256([]byte(script))
+	return fmt.Sprintf("%x", h[:4])
+}
 
 // generates full nftables ruleset as a string from a nfty config
 func Generate(cfg *config.Config) (string, error) {
