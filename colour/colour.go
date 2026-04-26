@@ -54,3 +54,4 @@ func Grey(s string) string     { return wrap(fgGrey, s) }
 func Boldf(format string, a ...any) string   { return Bold(fmt.Sprintf(format, a...)) }
 func Greenf(format string, a ...any) string  { return Green(fmt.Sprintf(format, a...)) }
 func Yellowf(format string, a ...any) string { return Yellow(fmt.Sprintf(format, a...)) }
+func Greyf(format string, a ...any) string   { return Grey(fmt.Sprintf(format, a...)) }

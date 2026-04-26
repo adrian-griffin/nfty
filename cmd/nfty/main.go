@@ -618,21 +618,36 @@ func runCounters() {
 		return
 	}
 
+	// hostname for the header line
+	hostname, _ := os.Hostname()
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	// execution header
+	fmt.Printf("  %s %s%s%s\n",
+		colour.Grey("nfty"),
+		colour.Bold("counters"),
+		strings.Repeat(" ", 15),
+		colour.DarkGrey(hostname+" · "+now),
+	)
+	fmt.Println()
+
+	divider()
+
 	// group by ip family in display
 	currentFamily := ""
-	fmt.Printf("\n  %-50s %12s %10s\n", "RULE", "PACKETS", "BYTES")
-	fmt.Printf("  %-50s %12s %10s\n", strings.Repeat("-", 50), strings.Repeat("-", 12), strings.Repeat("-", 10))
+	fmt.Print(colour.Bold(colour.Greyf("\n  %-50s %12s %10s\n", "RULE", "PACKETS", "BYTES")))
+	fmt.Print(colour.Greyf("  %-50s %12s %10s\n", strings.Repeat("─", 50), strings.Repeat("─", 12), strings.Repeat("─", 10)))
 
 	for _, c := range counts {
 		// print family/chain header when it changes
 		familyChain := c.Family + " " + c.Chain
 		if familyChain != currentFamily {
-			fmt.Printf("\n [%s/%s]\n", c.Family, c.Chain)
+			fmt.Print(colour.Bold(colour.Greyf("\n  [%s/%s]\n", c.Family, c.Chain)))
 			currentFamily = familyChain
 		}
 
-		fmt.Printf("  %-50s %12s %10s\n",
-			c.Comment,
+		fmt.Printf("    %-50s %12s %10s\n",
+			colour.Grey(c.Comment),
 			counters.FormatPackets(c.Packets),
 			counters.FormatBytes(c.Bytes))
 	}

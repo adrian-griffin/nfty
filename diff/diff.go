@@ -36,6 +36,14 @@ func sortFlags(args []string) []string {
 // normalizes counter values for diffing
 var counterRegex = regexp.MustCompile(`counter packets \d+ bytes \d+`)
 
+// for normalizing nftables ~64char line maximums for diffing
+// replaces comma followed by newline + leading whitespace -> `,`
+var elemContinuation = regexp.MustCompile(`(?m),\s*\n\s+`)
+
+func collapseElements(script string) string {
+	return elemContinuation.ReplaceAllString(script, ", ")
+}
+
 // ~~ strippers (heh)
 func stripCounters(script string) string {
 	return counterRegex.ReplaceAllString(script, "counter")
@@ -86,6 +94,10 @@ func diffScripts(oldLabel, newLabel, oldScript, newScript string) (string, bool,
 	// strip counter values
 	oldScript = stripCounters(oldScript)
 	newScript = stripCounters(newScript)
+
+	// normalize ~64char-per-line-max nft formatting
+	oldScript = collapseElements(oldScript)
+	newScript = collapseElements(newScript)
 
 	// write both scripts to temp files for diff
 	oldFile, err := os.CreateTemp("", "nfty-old-*.nft")
