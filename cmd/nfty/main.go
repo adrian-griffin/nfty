@@ -82,9 +82,9 @@ func runApply(args []string) {
 	// define new flagset for apply sub-options
 	flagSet := flag.NewFlagSet("apply", flag.ExitOnError)
 	// sub-option flags for apply set
-	dryRun := flagSet.Bool("-dry-run", false, "show diffs, no changes")
-	skipConfirm := flagSet.Bool("-skip-confirm", false, "skip automatic rollback (dangerous)")
-	confirmSeconds := flagSet.Int("-commit-confirm", 30, "rollback timer in seconds (30s default)")
+	dryRun := flagSet.Bool("dry-run", false, "show diffs, no changes")
+	skipConfirm := flagSet.Bool("skip-confirm", false, "skip automatic rollback (dangerous)")
+	confirmSeconds := flagSet.Int("commit-confirm", 30, "rollback timer in seconds (30s default)")
 	flagSet.Parse(args)
 
 	// if supplied .toml is empty err & exit
@@ -356,7 +356,7 @@ func runCheck(args []string) {
 
 	// new flagset for check sub-opts
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
-	listNFTRules := fs.Bool("-list-ruleset", false, "print generated nftables script from nfty toml")
+	listNFTRules := fs.Bool("list-ruleset", false, "print generated nftables script from nfty toml")
 	fs.Parse(args)
 
 	// if flag is ??, output usage help message
