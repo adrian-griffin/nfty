@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
 	"net"
@@ -155,7 +156,15 @@ func normalizeAddrs(addrs []string) []string {
 	for i, a := range addrs {
 		normalized[i] = normalizeAddr(a)
 	}
-	sort.Strings(normalized)
+	sort.Slice(normalized, func(i, j int) bool {
+		ipI := net.ParseIP(strings.SplitN(normalized[i], "/", 2)[0])
+		ipJ := net.ParseIP(strings.SplitN(normalized[j], "/", 2)[0])
+		if ipI == nil || ipJ == nil {
+			return normalized[i] < normalized[j]
+		}
+		// compare as 16-byte representations because nft hates me and formats shit weird
+		return bytes.Compare(ipI.To16(), ipJ.To16()) < 0
+	})
 	return normalized
 }
 
@@ -206,7 +215,7 @@ func buildDefaultForwards() []string {
 // generates SSH log+drop ruleset
 func buildSSHLogRules() []string {
 	return []string{
-		t2 + "tcp dport 22 counter log prefix \"NFTY DROP 22/TCP: \" level warn comment \"nfty: SSH log\"",
+		t2 + "tcp dport 22 counter log prefix \"NFTY DROP 22/TCP: \" comment \"nfty: SSH log\"",
 		t2 + "tcp dport 22 counter drop comment \"nfty: SSH drop\"",
 	}
 }
@@ -511,7 +520,7 @@ func buildTable(family string, tableName string, lists map[string]config.Address
 	var tableOutput strings.Builder
 
 	// nftables block starter
-	tableOutput.WriteString(fmt.Sprintf("table %s %s {\n", family, tableName))
+	tableOutput.WriteString(fmt.Sprintf("table %s %s {", family, tableName))
 
 	// set proper address type based on supplied ip family
 	addrType := "ipv4_addr"
