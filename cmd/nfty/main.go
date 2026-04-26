@@ -605,6 +605,14 @@ func runStatus() {
 	}
 }
 
+// cuts string to maxLen, adds "…"
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-1] + "..."
+}
+
 // runs counters parsing and displays output
 func runCounters() {
 	counts, err := counters.ParseCounters()
@@ -631,12 +639,12 @@ func runCounters() {
 	)
 	fmt.Println()
 
-	divider()
+	const commentWidth = 45
 
-	// group by ip family in display
+	// header
 	currentFamily := ""
-	fmt.Print(colour.Bold(colour.Greyf("\n  %-50s %12s %10s\n", "RULE", "PACKETS", "BYTES")))
-	fmt.Print(colour.Greyf("  %-50s %12s %10s\n", strings.Repeat("─", 50), strings.Repeat("─", 12), strings.Repeat("─", 10)))
+	fmt.Print(colour.Bold(colour.Greyf("\n  %-*s %12s %10s\n", commentWidth, "RULE", "PACKETS", "BYTES")))
+	fmt.Print(colour.Greyf("  %-*s %12s %10s\n", commentWidth, strings.Repeat("─", commentWidth), strings.Repeat("─", 12), strings.Repeat("─", 10)))
 
 	for _, c := range counts {
 		// print family/chain header when it changes
@@ -646,8 +654,10 @@ func runCounters() {
 			currentFamily = familyChain
 		}
 
-		fmt.Printf("    %-50s %12s %10s\n",
-			colour.Grey(c.Comment),
+		// pad prior to ansi colouring
+		padded := fmt.Sprintf("%-*s", commentWidth, truncate(c.Comment, commentWidth))
+		fmt.Printf("    %s %12s %10s\n",
+			colour.Grey(padded),
 			counters.FormatPackets(c.Packets),
 			counters.FormatBytes(c.Bytes))
 	}
