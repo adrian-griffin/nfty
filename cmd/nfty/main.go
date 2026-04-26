@@ -12,6 +12,7 @@ import (
 	"github.com/adrian-griffin/nfty/commit"
 	"github.com/adrian-griffin/nfty/config"
 	"github.com/adrian-griffin/nfty/counters"
+	"github.com/adrian-griffin/nfty/diff"
 	"github.com/adrian-griffin/nfty/meta"
 	"github.com/adrian-griffin/nfty/nft"
 	"github.com/adrian-griffin/nfty/rules"
@@ -66,6 +67,8 @@ func main() {
 		runRestore()
 	case "counters":
 		runCounters()
+	case "diff":
+		diff.RunDiff(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		printUsage()
@@ -87,9 +90,9 @@ func runApply(args []string) {
 	// define new flagset for apply sub-options
 	flagSet := flag.NewFlagSet("apply", flag.ExitOnError)
 	// sub-option flags for apply set
-	dryRun := flagSet.Bool("dry-run", false, "show diffs, no changes")
-	skipConfirm := flagSet.Bool("skip-confirm", false, "skip automatic rollback (dangerous)")
-	confirmSeconds := flagSet.Int("commit-confirm", 30, "rollback timer in seconds (30s default)")
+	dryRun := flagSet.Bool("-dry-run", false, "show diffs, no changes")
+	skipConfirm := flagSet.Bool("-skip-confirm", false, "skip automatic rollback (dangerous)")
+	confirmSeconds := flagSet.Int("-commit-confirm", 30, "rollback timer in seconds (30s default)")
 	flagSet.Parse(args)
 
 	// if supplied .toml is empty err & exit
@@ -109,7 +112,6 @@ func runApply(args []string) {
 	hostname, _ := os.Hostname()
 	now := time.Now().Format("2006-01-02 15:04:05")
 
-	// in case user has dementia
 	fmt.Printf("  %s %s%s%s\n",
 		colour.Grey("nfty"),
 		colour.Bold("apply"),
@@ -182,24 +184,46 @@ func runApply(args []string) {
 		fmt.Printf("  %s\n", colour.Red("⚠ WARNING: --skip-confirm is active"))
 
 		fmt.Printf("    %s %s\n",
-			colour.Grey("automatic rollback is disabled. if this ruleset is bad, you can"),
-			colour.Red("be locked out"),
+			colour.Grey("automatic rollback is disabled. if this ruleset is bad,"),
+			colour.Red("you can be locked out"),
 		)
+
 		divider()
-		// TODO: POLL FOR 'y/n'
 
-		// formally apply generated NFT config
-		if err := nft.ApplyScript(script); err != nil {
-			fmt.Fprintf(os.Stderr, "apply failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("%s\n", colour.Green("  ✓ ruleset applied and committed"))
+		var userConfirmSkip string
+		// poll for user confirmation on skip
+		for {
+			fmt.Printf("\n  proceed? (y/n): ")
 
-		// skip-confirm: persist immediately, no timer
-		if cfg.Core.Persist {
-			if err := commit.SaveRunningRuleset(script); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to persist ruleset: %v\n", err)
+			// scan for input
+			fmt.Scanln(&userConfirmSkip)
+
+			// switch to catch input choices
+			switch strings.ToLower(userConfirmSkip) {
+			case "y":
+				// formally apply generated NFT config
+				if err := nft.ApplyScript(script); err != nil {
+					fmt.Fprintf(os.Stderr, "  apply failed: %v\n", err)
+					os.Exit(1)
+				}
+				fmt.Printf("%s\n", colour.Green("  ✓ ruleset applied and committed"))
+
+				// skip-confirm: persist immediately, no timer
+				if cfg.Core.Persist {
+					if err := commit.SaveRunningRuleset(script); err != nil {
+						fmt.Fprintf(os.Stderr, "failed to persist ruleset: %v\n", err)
+					}
+				}
+
+			case "n":
+				fmt.Printf("%s\n", colour.Yellow("  ⏹ application cancelled"))
+				return
+
+			default:
+				fmt.Println("invalid input, please try again")
+				continue
 			}
+			break
 		}
 
 		divider()
@@ -340,7 +364,7 @@ func runCheck(args []string) {
 
 	// new flagset for check sub-opts
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
-	listNFTRules := fs.Bool("list-ruleset", false, "print generated nftables script from nfty toml")
+	listNFTRules := fs.Bool("-list-ruleset", false, "print generated nftables script from nfty toml")
 	fs.Parse(args)
 
 	// if flag is ??, output usage help message
@@ -709,15 +733,17 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("commands:")
 	fmt.Println("  apply <config.toml>              apply config with safety checks")
-	fmt.Println("      --dry-run                      show diffs, no changes")
+	fmt.Println("      --dry-run                      run apply without saving changes")
 	fmt.Println("      --commit-confirm <seconds>     set rollback timer (default: 30)")
 	fmt.Println("      --skip-confirm                 skip rollback timer (dangerous)")
-	fmt.Println("  check <config.toml>              validate config, no changes")
+	fmt.Println("  check <config.toml>              validate config")
 	fmt.Println("      --list-ruleset                 list NFT ruleset output")
-	fmt.Println("  status                           show current ruleset")
+	fmt.Println("  status                           show current status")
+	fmt.Println("      --list-ruleset                 list NFT ruleset output")
+	fmt.Println("  diff <config.toml>               show changes against current ruleset")
 	fmt.Println("  confirm                          confirm applied config")
-	fmt.Println("  counters                         display counters/statistics")
 	fmt.Println("  rollback                         revert to previous rule snapshot")
+	fmt.Println("  counters                         display counters/statistics")
 	fmt.Println("  version                          show version info")
 }
 

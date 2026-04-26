@@ -1,17 +1,58 @@
 package diff
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
+	"time"
+
+	"github.com/adrian-griffin/nfty/colour"
+	"github.com/adrian-griffin/nfty/config"
+	"github.com/adrian-griffin/nfty/nft"
+	"github.com/adrian-griffin/nfty/rules"
 )
+
+// reorders flag args to allow dynamic flag inputs from user
+func sortFlags(args []string) []string {
+	var flags, positional []string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			flags = append(flags, arg)
+		} else {
+			positional = append(positional, arg)
+		}
+	}
+	return append(flags, positional...)
+}
 
 // normalizes counter values for diffing
 var counterRegex = regexp.MustCompile(`counter packets \d+ bytes \d+`)
 
+// ~~ strippers (heh)
 func stripCounters(script string) string {
 	return counterRegex.ReplaceAllString(script, "counter")
+}
+
+// strip file preamble & shebang for diff purposes
+func stripPreamble(script string) string {
+	var lines []string
+	// walk through file, if shebang or other prefix, skip line
+	for _, line := range strings.Split(script, "\n") {
+		// skip shebang, blank lines before first table, and atomic cleanup
+		if strings.HasPrefix(line, "#!/") ||
+			strings.HasPrefix(line, "delete table") ||
+			// bare "table ip X" without a "{" is the create-before-delete line
+			(strings.HasPrefix(line, "table ") && !strings.HasSuffix(line, "{")) {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	// trim leading blank lines left by removed preamble
+	result := strings.TrimLeft(strings.Join(lines, "\n"), "\n")
+	return result
 }
 
 // diffs two configs by shelling out
@@ -55,4 +96,102 @@ func diffScripts(oldLabel, newLabel, oldScript, newScript string) (string, bool,
 
 	// exit 0 if no differences
 	return "", false, nil
+}
+
+// is called by `nfty diff <.toml>`, compares against current NFTables output
+func RunDiff(args []string) {
+	args = sortFlags(args)
+	fs := flag.NewFlagSet("diff", flag.ExitOnError)
+	fs.Parse(args)
+
+	configPath := fs.Arg(0)
+
+	if configPath == "" {
+		fmt.Fprintln(os.Stderr, "usage: nfty diff <config.toml>")
+		os.Exit(1)
+	}
+
+	// hostname for the header line
+	hostname, _ := os.Hostname()
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	fmt.Printf("  %s %s%s%s\n",
+		colour.Grey("nfty"),
+		colour.Bold("diff"),
+		strings.Repeat(" ", 15),
+		colour.DarkGrey(hostname+" · "+now),
+	)
+	fmt.Println()
+
+	// load and generate the proposed config
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  config error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// generate nftables from nfty
+	proposed, err := rules.Generate(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  rule generation failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// validate nftables syntax before diff
+	if err := nft.ValidateScript(proposed); err != nil {
+		fmt.Fprintf(os.Stderr, "  nft syntax validation failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// get current NFTables live ruleset
+	// nfty IP Tables only
+	ipTable, err := nft.ListTable("ip", cfg.Core.Table)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  could not read live table ip %s: %v\n", cfg.Core.Table, err)
+		os.Exit(1)
+	}
+	ip6Table, err := nft.ListTable("ip6", cfg.Core.Table)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  could not read live table ip6 %s: %v\n", cfg.Core.Table, err)
+		os.Exit(1)
+	}
+
+	current := string(ipTable) + "\n" + string(ip6Table)
+
+	fmt.Printf("  %s %s %s\n", colour.Grey("config:"), cfg.Core.Name, colour.DarkGrey(cfg.Core.Description))
+
+	// run the diff
+	diffOutput, changed, err := diffScripts(
+		"current ruleset",
+		"proposed ruleset",
+		current,
+		stripPreamble(proposed),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  diff failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	if !changed {
+		fmt.Printf("  %s\n", colour.Green("✓ no differences, proposed nfty config matches live ruleset"))
+		return
+	}
+
+	// counts # of adds/rems for summary
+	adds, removes := 0, 0
+	for _, line := range strings.Split(diffOutput, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
+			adds++
+		case strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"):
+			removes++
+		}
+	}
+
+	fmt.Printf("  %s  %s\n",
+		colour.Green(fmt.Sprintf("+%d lines", adds)),
+		colour.Red(fmt.Sprintf("-%d lines", removes)),
+	)
+	fmt.Println()
+	fmt.Print(diffOutput)
 }
