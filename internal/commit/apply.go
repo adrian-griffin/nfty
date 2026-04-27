@@ -130,7 +130,13 @@ func RunApply(args []string) {
 
 				// skip-confirm: persist immediately, no timer
 				if cfg.Core.Persist {
-					if err := SaveRunningRuleset(script); err != nil {
+					// save running.nft after application
+					currentRuleset, err := nft.ListRulesetScript()
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "failed to collect current ruleset: %v\n", err)
+					}
+
+					if err := SaveRunningRuleset(string(currentRuleset)); err != nil {
 						fmt.Fprintf(os.Stderr, "failed to persist ruleset: %v\n", err)
 					}
 				}

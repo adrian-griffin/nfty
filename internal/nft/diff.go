@@ -11,25 +11,8 @@ import (
 
 	"github.com/adrian-griffin/nfty/internal/colour"
 	"github.com/adrian-griffin/nfty/internal/config"
+	"github.com/adrian-griffin/nfty/internal/tools"
 )
-
-// writes section divier
-func divider() {
-	fmt.Println(colour.Grey("  " + strings.Repeat("─", 52)))
-}
-
-// reorders flag args to allow dynamic flag inputs from user
-func sortFlags(args []string) []string {
-	var flags, positional []string
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			flags = append(flags, arg)
-		} else {
-			positional = append(positional, arg)
-		}
-	}
-	return append(flags, positional...)
-}
 
 // normalizes counter values for diffing
 var counterRegex = regexp.MustCompile(`counter packets \d+ bytes \d+`)
@@ -136,7 +119,7 @@ func diffScripts(oldLabel, newLabel, oldScript, newScript string) (string, bool,
 
 // is called by `nfty diff <.toml>`, compares against current NFTables output
 func RunDiff(args []string) {
-	args = sortFlags(args)
+	args = tools.SortFlags(args)
 	fs := flag.NewFlagSet("diff", flag.ExitOnError)
 	fs.Parse(args)
 
@@ -159,7 +142,7 @@ func RunDiff(args []string) {
 	)
 	fmt.Println()
 
-	divider()
+	tools.Divider()
 
 	// load and generate the proposed config
 	cfg, err := config.Load(configPath)
@@ -212,7 +195,7 @@ func RunDiff(args []string) {
 	fmt.Printf("  %s %s %s\n", colour.Grey("config:"), cfg.Core.Name, colour.DarkGrey(cfg.Core.Description))
 	fmt.Printf("  %s %s\n", colour.Grey("checksum:"), colour.DarkGrey(proposedChecksum))
 
-	divider()
+	tools.Divider()
 
 	// run the diff
 	diffOutput, changed, err := diffScripts(
