@@ -5,7 +5,7 @@ A network firewall manager for Linux, aimed at simplifying management and change
 - uses `nftables` under the hood
 - allows diffing of planned changes
 - lockout prevention and config rollback
-- packet counters (and eventually, rate graphs)
+- packet counters
 - docker compatibility
 
 ## Why?
@@ -20,6 +20,31 @@ Config is linted for basic sanity and security, such as detecting SSH connection
 Defining config is made as simple as possible. IPv6 is native and always defined, SSH attempt logging is toggleable, the `default_rules` option handles basic sanity rules (eg. `ICMP`, `Established, Related`, `Invalid`, and `DHCP/SLAAC (v4 & v6)`), and entries for both `[tcp, udp]` protocols can be defined in one rule. 
 
 Tracking changes and their effect on traffic is made easy with colourized diffs and human-readable packet counters (and eventually, maybe packet graphs)
+
+## Table of Contents
+
+- [Why?](#why)
+- [Scope](#scope)
+- [Requirements](#requirements)
+- [Install](#install)
+- [101](#101)
+- [Config Example](#config-example)
+- [Usage](#usage)
+- [Commit Confirm/Rollback](#commit-confirmrollback)
+- [State Files](#state-files)
+- [Docker Compatibility](#docker-compatibility)
+
+## Scope
+
+nfty only edits or participates in its own NFTables table, and doesn't touch other user-defined tables or docker tables, but it *does* snapshot **all** config for restoration. 
+
+This means you can feel secure that nfty will not break other, existing NFTables configuration, but will backup, store, and persist it, read-only.
+
+## Requirements
+
+- Linux with `nftables`
+- `sudo`/`root` privileges (required for nftables interaction)
+- `systemd` (for rollback timer functionality)
 
 ## Install
 
@@ -108,18 +133,6 @@ nfty counters
   rate_limit = { rate = "20/second", action = "accept", burst = "40 packets" }
   over_limit = "drop"
 ```
-
-## Requirements
-
-- Linux with `nftables`
-- `sudo`/`root` privileges (required for nftables interaction)
-- `systemd` (for rollback timer functionality)
-
-## Scope
-
-nfty only edits or participates in its own NFTables table, and doesn't touch other user-defined tables or docker tables, but it *does* snapshot **all** config for restoration. 
-
-This means you can feel secure that nfty will not break other, existing NFTables configuration, but will backup, store, and persist it, read-only.
 
 ## Usage
 
