@@ -1,3 +1,4 @@
+// builds nft-syntax rules from provided .toml
 package nft
 
 import (
@@ -176,14 +177,17 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 	lines = append(lines,
 		t2+"iif \"lo\" counter accept comment \"nfty: allow loopback\"")
 
-	// icmp and ratelimiting
-	icmpProto := formatICMPProto(family)
-	icmpLimit := core.ICMPv4Limit
+	// icmpv6 133-136/NDP
 	if family == "ip6" {
-		icmpLimit = core.ICMPv6Limit
+		lines = append(lines,
+			t2+"icmpv6 type { nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } counter accept comment \"nfty: allow NDP\"")
 	}
 
-	// handle if user-passed icmp limit(s) are empty
+	// icmp and ratelimiting
+	icmpProto := formatICMPProto(family)
+	icmpLimit := core.ICMPLimit
+
+	// handle if user-passed icmp limit(s) are not empty
 	if icmpLimit != "" {
 		lines = append(lines,
 			fmt.Sprintf(t2+"meta l4proto %s limit rate %s counter accept comment \"nfty: %s rate limit\"",
@@ -200,6 +204,18 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 	// drop invalids
 	lines = append(lines,
 		t2+"ct state invalid counter drop comment \"nfty: drop invalid\"")
+
+	// dhcpv4 client allow
+	if family == "ip" {
+		lines = append(lines,
+			t2+"udp sport 67 udp dport 68 counter accept comment \"nfty: allow DHCPv4 client\"")
+	}
+
+	// dhcpv6 client allow
+	if family == "ip6" {
+		lines = append(lines,
+			t2+"ip6 saddr fe80::/10 udp sport 547 udp dport 546 counter accept comment \"nfty: allow DHCPv6 client\"")
+	}
 
 	return lines
 }

@@ -26,8 +26,7 @@ type CoreConfig struct {
 	DockerCompat bool   `toml:"docker_compat"` // sets prio to 10
 	Persist      bool   `toml:"persist"`
 	DefaultRules bool   `toml:"default_rules"`
-	ICMPv4Limit  string `toml:"icmpv4_limit"`
-	ICMPv6Limit  string `toml:"icmpv6_limit"`
+	ICMPLimit    string `toml:"icmp_limit"`
 	LogSSHFails  bool   `toml:"log_ssh_fails"`
 }
 
@@ -167,6 +166,42 @@ func (proto *ProtoValue) UnmarshalTOML(data interface{}) error {
 	return nil
 }
 
+// sanitize and normalize RLIMIT input
+func normalizeRateLimit(rate string) (string, error) {
+	shortToFull := map[string]string{
+		"s": "second",
+		"m": "minute",
+		"h": "hour",
+		"d": "day",
+	}
+
+	// splittin strs & validate int portion
+	parts := strings.SplitN(rate, "/", 2)
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid rate format %q, expected \"N/unit\"", rate)
+	}
+	if _, err := strconv.Atoi(parts[0]); err != nil {
+		return "", fmt.Errorf("invalid rate in %q: %w", rate, err)
+	}
+
+	unit := parts[1]
+	// expand shorthand if present
+	if full, ok := shortToFull[unit]; ok {
+		unit = full
+	}
+
+	validUnits := map[string]bool{
+		"second": true, "minute": true,
+		"hour": true, "day": true,
+	}
+	if !validUnits[unit] {
+		return "", fmt.Errorf("invalid unit %q in rate %q, "+
+			"expected second/minute/hour/day (or s/m/h/d)", parts[1], rate)
+	}
+
+	return parts[0] + "/" + unit, nil
+}
+
 // defines single rule entry, maps directly to nftables design
 type Rule struct {
 	Comment   string      `toml:"comment"`    // name and description
@@ -209,8 +244,22 @@ func Load(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	if _, err := toml.Decode(string(data), &cfg); err != nil {
+
+	// decode toml, now with actual metadata handling!
+	meta, err := toml.Decode(string(data), &cfg)
+	if err != nil {
 		return nil, fmt.Errorf("parsing config %q: %w", path, err)
+	}
+
+	// if any toml keys remain unmapped to struct field,
+	// treat them as undecoded and error for each
+	if undecoded := meta.Undecoded(); len(undecoded) > 0 {
+		keys := make([]string, len(undecoded))
+		for i, k := range undecoded {
+			keys[i] = k.String()
+		}
+		return nil, fmt.Errorf("unknown config keys in %q: %s",
+			path, strings.Join(keys, ", "))
 	}
 
 	if err := validateConfig(&cfg); err != nil {
@@ -257,6 +306,15 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.Core.Table == "" {
 		return fmt.Errorf("core.table is required")
+	}
+
+	// validate icmp limit
+	if cfg.Core.ICMPLimit != "" {
+		normalized, err := normalizeRateLimit(cfg.Core.ICMPLimit)
+		if err != nil {
+			return fmt.Errorf("core.icmp_limit: %w", err)
+		}
+		cfg.Core.ICMPLimit = normalized
 	}
 
 	// validate all address-list entries are valid IPs or CIDRs

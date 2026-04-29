@@ -1,44 +1,35 @@
 # nfty
 
-A network firewall manager for Linux, aimed at simplifying management and changes, with rollback & lockout prevention safety features inspired by enterprise-grade network routers, such as Arista/Juniper/Mikrotik, written in go.
+A network firewall manager for Linux, aimed at simplifying management and providing more visibility, with rollback & lockout-prevention safety features inspired by enterprise network routers, such as Arista/Juniper/Mikrotik, written in go.
 
 - uses `nftables` under the hood
-- allows diffing of planned changes
+- diffing of planned changes
 - lockout prevention and config rollback
 - packet counters
 - docker compatibility
 
 ## Why?
 
-NFTables' user experience is tough, visibility is shite, and lockout certainly isn't as low as you'd hope 👀
+The NFTables user experience is obtuse, visibility is terrible, and lockout is as easy as accidentally wiping the wrong table..
 
-*Every time* a ruleset is applied by nfty, automatic config rollback is put on a timer, stopped only when the user approves the changes with a `nfty confirm` (30s default). If you accidentally lock yourself out or kill service functionality, changes will revert upon timer expire or user-supplied `nfty rollback`.
+***Every time*** a ruleset is applied by nfty, automatic config rollback is put on a timer, stopped only when the user approves changes with a `nfty confirm` (30s default). If you accidentally lock yourself out or kill some service functionality, changes will revert upon timer expire or user-supplied `nfty rollback`.  
+The intent is to function similarly to `commit confirmed` or `safe mode` functions of enterprise-grade network equipment, and to make changes and tinkering more approachable.  
+Additional details on how the rollback functionality works can be found here [Commit Confirm/Rollback](#commit-confirmrollback)
 
 nfty uses simple `.toml` config for defining rulesets, chains, IP address lists, etc., and handles atomic ruleset application to the system.  
 Config is linted for basic sanity and security, such as detecting SSH connections to prevent shell lockout, warning when a socket is open to all addresses or interfaces, etc.
 
-Defining config is made as simple as possible. IPv6 is native and always defined, SSH attempt logging is toggleable, the `default_rules` option handles basic sanity rules (eg. `ICMP`, `Established, Related`, `Invalid`, and `DHCP/SLAAC (v4 & v6)`), and entries for both `[tcp, udp]` protocols can be defined in one rule. 
+Defining config is made as simple as possible. IPv6 is native and always defined, SSH attempt logging is toggleable, the `default_rules` option handles basic sanity rules (eg. `ICMP`, `Established, Related`, `Invalid`, `SLAAC`, and `DHCP (v4 & v6)`), and entries for both `[tcp, udp]` protocols can be defined in a single rule with nfty, but function as 2 individual rules on the kernel. 
 
-Tracking changes and their effect on traffic is made easy with colourized diffs and human-readable packet counters (and eventually, maybe packet graphs)
-
-## Table of Contents
-
-- [Why?](#why)
-- [Scope](#scope)
-- [Requirements](#requirements)
-- [Install](#install)
-- [101](#101)
-- [Config Example](#config-example)
-- [Usage](#usage)
-- [Commit Confirm/Rollback](#commit-confirmrollback)
-- [State Files](#state-files)
-- [Docker Compatibility](#docker-compatibility)
+Tracking changes and their effect on traffic is made easy with colourized diffs and human-readable packet counters (and eventually, maybe packet graphs), so it's easy to tinker and troubleshoot when hardening systems.
 
 ## Scope
 
-nfty only edits or participates in its own NFTables table, and doesn't touch other user-defined tables or docker tables, but it *does* snapshot **all** config for restoration. 
+The number one question anyone should be asking when looking at at tool like this is the scope or.. blast radius, if things go south.
 
-This means you can feel secure that nfty will not break other, existing NFTables configuration, but will backup, store, and persist it, read-only.
+nfty *only* edits and participates in its own NFTables table, and doesn't write to or touch other user-defined tables or docker tables, but nfty *does* snapshot **ALL** config for restoration. 
+
+This means you can feel secure that nfty will never break other, existing NFTables configuration, but it will backup, store, and persist it, read-only.
 
 ## Requirements
 
@@ -69,6 +60,12 @@ sudo apt-get install nftables -y
 sudo systemctl restart nftables  # start nft
 sudo systemctl enable nftables   # nft on startup
 ```
+
+## Commit Confirm/Rollback
+
+Importantly, the rollback timer is a systemd transient unit (`systemd-run`), **NOT** a sleep in the CLI process. Rollback survives shell death, SSH disconnects, and terminal crashes. Bar the machine rebooting mid-timer, it can be relied on.
+
+Even if it's been 30 mins after the user approves changes with a `nfty confirm`, running a `nfty rollback` will instantly revert the firewall to the previous state, in case you discover issue with new changes at any point.
 
 ## 101
 
@@ -103,7 +100,7 @@ nfty counters
   docker_compat = true
   persist       = true
   default_rules = true
-  icmpv4_limit  = "10/s"
+  icmp_limit  = "10/s"
   log_ssh_fails = true
 
 [chains.policy]
@@ -150,12 +147,6 @@ nfty status                           show current state and pending changes
     --list-ruleset                      show full live nftables ruleset
 nfty counters                         display per-rule hit counters
 ```
-
-## Commit Confirm/Rollback
-
-The rollback timer is a systemd transient unit (`systemd-run`), **not** a sleep in the CLI process. Rollback survives shell death, SSH disconnects, and terminal crashes. Bar the machine rebooting mid-timer, it can be relied on.
-
-Even if it's been 30 mins after a `nfty confirm`, running a `nfty rollback` will instantly revert the firewall to the previous state, in case you discover issue with new changes.
 
 ## State Files
 

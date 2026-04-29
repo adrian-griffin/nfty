@@ -17,6 +17,7 @@ func main() {
 		switch os.Args[1] {
 		case "version":
 			fmt.Printf("nfty  ~  version: %s\n", meta.Version)
+			fmt.Printf("  %s\n", meta.MOTD)
 			os.Exit(0)
 		}
 	}
