@@ -183,6 +183,18 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 			t2+"icmpv6 type { nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } counter accept comment \"nfty: allow NDP\"")
 	}
 
+	// dhcpv4 client allow
+	if family == "ip" {
+		lines = append(lines,
+			t2+"udp sport 67 udp dport 68 counter accept comment \"nfty: allow DHCPv4 client\"")
+	}
+
+	// dhcpv6 client allow
+	if family == "ip6" {
+		lines = append(lines,
+			t2+"ip6 saddr fe80::/10 udp sport 547 udp dport 546 counter accept comment \"nfty: allow DHCPv6 client\"")
+	}
+
 	// icmp and ratelimiting
 	icmpProto := formatICMPProto(family)
 	icmpLimit := core.ICMPLimit
@@ -204,18 +216,6 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 	// drop invalids
 	lines = append(lines,
 		t2+"ct state invalid counter drop comment \"nfty: drop invalid\"")
-
-	// dhcpv4 client allow
-	if family == "ip" {
-		lines = append(lines,
-			t2+"udp sport 67 udp dport 68 counter accept comment \"nfty: allow DHCPv4 client\"")
-	}
-
-	// dhcpv6 client allow
-	if family == "ip6" {
-		lines = append(lines,
-			t2+"ip6 saddr fe80::/10 udp sport 547 udp dport 546 counter accept comment \"nfty: allow DHCPv6 client\"")
-	}
 
 	return lines
 }
@@ -469,7 +469,7 @@ func buildMatchCriteria(rule config.Rule, proto string, family string) ([]string
 
 	// interface name matching
 	// eventually need to add more robust validations here, possibly including collecting interface info from machine
-	// TODO: interace-name validations/in safety (?)
+
 	if rule.IIF != "" {
 		parts = append(parts, fmt.Sprintf("iif \"%s\"", rule.IIF))
 		// TODO: move iif warning to safety package sanity-checking
@@ -599,7 +599,7 @@ func buildTable(family string, tableName string, lists map[string]config.Address
 func buildRule(rule config.Rule, family string) ([]string, error) {
 	var results []string
 
-	// parse protool array to accomodate tcp + udp rule definitions
+	// parse protocol array to accomodate tcp + udp rule definitions
 	protocols := rule.Protocol.Protocols
 	if len(protocols) == 0 {
 		protocols = []string{""}
@@ -621,7 +621,7 @@ func buildRule(rule config.Rule, family string) ([]string, error) {
 			continue // skip the normal action/comment logic below
 		}
 
-		// if log rule hit is enaabled, format log prefix into nftables-syntax
+		// legal log levels for nft
 		if rule.Log != nil {
 			parts = append(parts, formatLog(rule.Log))
 		}

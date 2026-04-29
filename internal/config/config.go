@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -289,6 +290,37 @@ func validatePolicy(policy *ChainPolicy) error {
 	return nil
 }
 
+// sanitize and normalize rate limits inputs
+func normalizeAllRateLimits(cfg *Config) error {
+	chains := []*[]Rule{
+		&cfg.Chains.IPv4.Input, &cfg.Chains.IPv4.Forward,
+		&cfg.Chains.IPv4.Output, &cfg.Chains.IPv4.Postrouting,
+		&cfg.Chains.IPv6.Input, &cfg.Chains.IPv6.Forward,
+		&cfg.Chains.IPv6.Output, &cfg.Chains.IPv6.Postrouting,
+	}
+	for _, chain := range chains {
+		for i := range *chain {
+			if (*chain)[i].RateLimit != nil && (*chain)[i].RateLimit.Rate != "" {
+				normalized, err := normalizeRateLimit((*chain)[i].RateLimit.Rate)
+				if err != nil {
+					return fmt.Errorf("rule %q: rate_limit.rate: %w",
+						(*chain)[i].Comment, err)
+				}
+				(*chain)[i].RateLimit.Rate = normalized
+			}
+		}
+	}
+	return nil
+}
+
+// sanitize any input strs
+func validateNFTString(value, field string) error {
+	if strings.ContainsAny(value, "\"\\\n\r;") {
+		return fmt.Errorf("%s must not contain quotes, backslashes, newlines, or semicolons", field)
+	}
+	return nil
+}
+
 // validates content, ips, chains, options, etc. of supplied configfile
 func validateConfig(cfg *Config) error {
 
@@ -317,15 +349,32 @@ func validateConfig(cfg *Config) error {
 		cfg.Core.ICMPLimit = normalized
 	}
 
-	// validate all address-list entries are valid IPs or CIDRs
+	// validate ratelimit syntax
+	if err := normalizeAllRateLimits(cfg); err != nil {
+		return err
+	}
+
+	// validate all ipv4 list comments and cidrs are safe
 	for name, list := range cfg.Lists.IPv4 {
+		if list.Comment != "" {
+			if err := validateNFTString(list.Comment, "List Comment"); err != nil {
+				return err
+			}
+		}
 		for _, entry := range list.Entries {
 			if err := validateCIDR(entry); err != nil {
 				return fmt.Errorf("Lists.ipv4.%s: invalid entry %q: %w", name, entry, err)
 			}
 		}
 	}
+
+	// validate all ipv6 list comments and cidrs are safe
 	for name, list := range cfg.Lists.IPv6 {
+		if list.Comment != "" {
+			if err := validateNFTString(list.Comment, "List Comment"); err != nil {
+				return err
+			}
+		}
 		for _, entry := range list.Entries {
 			if err := validateCIDR(entry); err != nil {
 				return fmt.Errorf("Lists.ipv6.%s: invalid entry %q: %w", name, entry, err)
@@ -333,42 +382,80 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	// validate rules
-	allRules := collectAllRules(cfg)
-
 	// define valid protocol options
 	validProtos := map[string]bool{"tcp": true, "udp": true, "icmp": true, "icmpv6": true}
 
 	// define valid action options
 	validActions := map[string]bool{"accept": true, "drop": true, "masquerade": true}
 
+	// collect and validate rules
+	allRules := collectAllRules(cfg)
 	for _, rule := range allRules {
 
 		// require comment cuz its used as in ID sort of
 		if rule.Comment == "" {
 			return fmt.Errorf("all rules require a comment")
 		}
-		// no double quotes that can escape str
-		if strings.ContainsAny(rule.Comment, "\"\\") {
-			return fmt.Errorf("rule %q: comment must not contain quotes or backslashes", rule.Comment)
+		// sanitize rule comment
+		if err := validateNFTString(rule.Comment, "Rule Comment"); err != nil {
+			return err
 		}
 
-		ruleSeen := map[string]bool{}
-		for _, rule := range allRules {
-			if ruleSeen[rule.Comment] {
-				return fmt.Errorf("duplicate rule comment %q", rule.Comment)
+		// validate log prefix and levels
+		if rule.Log != nil {
+			if rule.Log.Prefix == "" {
+				return fmt.Errorf("rule %q: log.prefix is required", rule.Comment)
 			}
-			ruleSeen[rule.Comment] = true
+			if err := validateNFTString(rule.Log.Prefix, "Rule Log Prefix"); err != nil {
+				return err
+			}
+			if rule.Log.Level != "" {
+				validLevels := map[string]bool{
+					"emerg": true, "alert": true, "crit": true, "err": true,
+					"warn": true, "warning": true, "notice": true,
+					"info": true, "debug": true,
+				}
+				if !validLevels[rule.Log.Level] {
+					return fmt.Errorf("rule %q: invalid log level %q",
+						rule.Comment, rule.Log.Level)
+				}
+			}
+		}
+
+		// sanitize interface name strings
+		for _, field := range []struct{ name, val string }{
+			{"iif", rule.IIF},
+			{"iifname", rule.IIFName},
+			{"oifname", rule.OIFName},
+		} {
+			if field.val != "" {
+				if err := validateNFTString(field.val, "Interface Name"); err != nil {
+					return err
+				}
+			}
 		}
 
 		// rate_limit.rate is required if rate_limit is set
 		if rule.RateLimit != nil {
 			if rule.RateLimit.Rate == "" {
-				return fmt.Errorf("rule %q: rate_limit.rate is required", rule.Comment)
+				return fmt.Errorf("rule %q: if rate_limit is set, a rate is required", rule.Comment)
 			}
-			if rule.RateLimit.Action == "" {
-				return fmt.Errorf("rule %q: rate_limit.action is required", rule.Comment)
+
+			// sanitize burst syntax
+			if rule.RateLimit.Burst != "" {
+				burstPattern := regexp.MustCompile(`^\d+ packets$`)
+				if !burstPattern.MatchString(rule.RateLimit.Burst) {
+					return fmt.Errorf("rule %q: rate_limit.burst must be \"N packets\", got %q",
+						rule.Comment, rule.RateLimit.Burst)
+				}
 			}
+
+			// validate rate-limit action passed
+			if !validActions[rule.RateLimit.Action] {
+				return fmt.Errorf("rule %q: rate_limit.action must be accept, drop, or masquerade, got %q",
+					rule.Comment, rule.RateLimit.Action)
+			}
+
 			// validate over_limit is drop or log if set
 			if rule.OverLimit != "" && rule.OverLimit != "drop" && rule.OverLimit != "log" {
 				return fmt.Errorf("rule %q: over_limit must be \"drop\" or \"log\", got %q",
@@ -523,20 +610,41 @@ func validateConfig(cfg *Config) error {
 
 	}
 
-	// check user-supplied names for special chars
+	// validate no dupes on comments
+	ruleSeen := map[string]bool{}
+	for _, rule := range allRules {
+		if ruleSeen[rule.Comment] {
+			return fmt.Errorf("duplicate rule comment %q", rule.Comment)
+		}
+		ruleSeen[rule.Comment] = true
+	}
+
+	// stricter ip list name checking for v4
 	for name := range cfg.Lists.IPv4 {
-		if strings.ContainsAny(name, " \t\"\\@{}()") {
-			return fmt.Errorf("Lists.ipv4.%s: list name contains invalid characters", name)
+		if err := validateNFTString(name, "IPv4 List Name"); err != nil {
+			return err
+		}
+		if strings.ContainsAny(name, " \t@{}()") {
+			return fmt.Errorf("lists.ipv4.%s: list name contains invalid characters", name)
 		}
 	}
+
+	// stricter ip list name checking for v6
 	for name := range cfg.Lists.IPv6 {
-		if strings.ContainsAny(name, " \t\"\\@{}()") {
-			return fmt.Errorf("Lists.ipv6.%s: list name contains invalid characters", name)
+		if err := validateNFTString(name, "IPv6 List Name"); err != nil {
+			return err
+		}
+		if strings.ContainsAny(name, " \t@{}()") {
+			return fmt.Errorf("lists.ipv6.%s: list name contains invalid characters", name)
 		}
 	}
+
 	// and table name
-	if strings.ContainsAny(cfg.Core.Table, " \t\"\\@{}()") {
-		return fmt.Errorf("core.table must not contain spaces")
+	if err := validateNFTString(cfg.Core.Table, "Table Name"); err != nil {
+		return err
+	}
+	if strings.ContainsAny(cfg.Core.Table, " \t@{}()") {
+		return fmt.Errorf("table name %s contains invalid characters", cfg.Core.Table)
 	}
 
 	return nil
