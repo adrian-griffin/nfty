@@ -1,4 +1,5 @@
-// builds nft-syntax rules from provided .toml
+// rules.go
+// // builds nft-syntax rules from provided .toml
 package nft
 
 import (
