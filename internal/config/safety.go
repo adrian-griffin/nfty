@@ -48,6 +48,98 @@ func checkChainPolicies(cfg *Config) {
 	}
 }
 
+// validate default/critical rules exist that are covered by default_rules
+func CheckDefaultRules(cfg *Config) {
+	if cfg.Core.DefaultRules {
+		return
+	}
+
+	// check for critical input rules
+	families := []struct {
+		name  string
+		input []Rule
+	}{
+		{"ipv4", cfg.Chains.IPv4.Input},
+		{"ipv6", cfg.Chains.IPv6.Input},
+	}
+
+	// for both v4 & v6
+	for _, fam := range families {
+		hasLoopback := false
+		hasEstablished := false
+		hasSSH := false
+		hasDHCP := false
+
+		for _, rule := range fam.input {
+			if rule.Disabled {
+				continue
+			}
+
+			// check for loopback accept
+			if (rule.IIF == "lo" || rule.IIFName == "lo") && rule.Action == "accept" {
+				hasLoopback = true
+			}
+
+			// check for est/rel
+			if rule.Action == "accept" && len(rule.CtState) > 0 {
+				hasEst := false
+				hasRel := false
+				for _, state := range rule.CtState {
+					switch strings.ToLower(state) {
+					case "established":
+						hasEst = true
+					case "related":
+						hasRel = true
+					}
+				}
+				// if both
+				if hasEst && hasRel {
+					hasEstablished = true
+				}
+			}
+
+			// check for ssh
+			if portCovers(rule.DPort, 22) && protoIncludes(rule.Protocol, "tcp") && rule.Action == "accept" {
+				hasSSH = true
+			}
+
+			// check for dhcp
+			if portCovers(rule.DPort, 68) && protoIncludes(rule.Protocol, "udp") && rule.Action == "accept" {
+				hasDHCP = true
+			}
+		}
+
+		if !hasLoopback {
+			tools.Divider()
+			fmt.Fprintf(os.Stderr, colour.Yellowf("  ⚠ WARNING: [%s] default_rules is disabled and no loopback accept rule found\n", fam.name))
+			fmt.Fprintf(os.Stderr, colour.Grey("    Without 'iif lo accept', local services may fail to communicate\n"))
+			tools.Divider()
+		}
+
+		if !hasEstablished {
+			tools.Divider()
+			fmt.Fprintf(os.Stderr, colour.Yellowf("  ⚠ WARNING: [%s] default_rules is disabled and no established/related accept rule found\n", fam.name))
+			fmt.Fprintf(os.Stderr, colour.Grey("    Without conntrack state matching, return traffic for outbound connections will be dropped\n"))
+			tools.Divider()
+		}
+
+		if !hasSSH {
+			tools.Divider()
+			fmt.Fprintf(os.Stderr, colour.Redf("  ⚠ WARNING: [%s] default_rules is disabled and no ssh accept rule found\n", fam.name))
+			fmt.Fprintf(os.Stderr, colour.Yellow("    Any active SSH shell sessions will time out after a few minutes, please rollback\n"))
+			tools.Divider()
+		}
+
+		if !hasDHCP {
+			tools.Divider()
+			fmt.Fprintf(os.Stderr, colour.Yellowf("  ⚠ WARNING: [%s] default_rules is disabled and no dhcp accept rule found\n", fam.name))
+			fmt.Fprintf(os.Stderr, colour.Grey("    If your device is using DHCP, it will lose its IP after the lease expires, please rollback if needed\n"))
+			tools.Divider()
+		}
+
+	}
+}
+
 type SSHSession struct {
 	PeerIP   net.IP // ssh session ip
 	PeerAddr string // raw address as reported by ss, for display
@@ -83,4 +175,24 @@ func DetectSSHSessions() ([]SSHSession, error) {
 		})
 	}
 	return sessions, nil
+}
+
+// validates whether any PortValue in the slice contains the target port
+func portCovers(ports []PortValue, target int) bool {
+	for _, p := range ports {
+		if target >= p.Start && target <= p.End {
+			return true
+		}
+	}
+	return false
+}
+
+// validates whether the ProtoValue contains the target protocol
+func protoIncludes(proto ProtoValue, target string) bool {
+	for _, p := range proto.Protocols {
+		if strings.EqualFold(p, target) {
+			return true
+		}
+	}
+	return false
 }

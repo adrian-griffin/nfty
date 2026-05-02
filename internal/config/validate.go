@@ -333,11 +333,12 @@ func validateConfig(cfg *Config) error {
 			return fmt.Errorf("rule %q: sport requires a protocol (tcp or udp)", rule.Comment)
 		}
 
-		// SAFETY
-		// validate rule logic and safety
-		RunStaticChecks(cfg)
-
 	}
+
+	// SAFETY
+	// validate rule logic and safety
+	RunStaticChecks(cfg)
+	CheckDefaultRules(cfg)
 
 	// validate no dupes on comments
 	ruleSeen := map[string]bool{}
