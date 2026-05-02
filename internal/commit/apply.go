@@ -91,6 +91,7 @@ func RunApply(args []string) {
 	}
 
 	// [TODO]: run safety checks (safety package)
+	config.RunStaticChecks(cfg)
 
 	fmt.Printf("  %s %s %s\n", colour.Grey("loaded config:"), cfg.Core.Name, colour.DarkGrey(cfg.Core.Description))
 	fmt.Printf("  %s\n", colour.Grey("if not confirmed (due to lockout, terminated ssh session, etc), firewall will revert to previous known good state"))

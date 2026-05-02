@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -107,4 +108,20 @@ func CountNftObjects(ruleset string) (tables, chains, rules int) {
 		}
 	}
 	return
+}
+
+// strips port off IPs "10.0.0.1:12345" or "[::1]:12345".
+func StripIPPorts(addr string) net.IP {
+	if strings.HasPrefix(addr, "[") {
+		end := strings.Index(addr, "]")
+		if end < 0 {
+			return nil
+		}
+		return net.ParseIP(addr[1:end])
+	}
+	lastColon := strings.LastIndex(addr, ":")
+	if lastColon < 0 {
+		return nil
+	}
+	return net.ParseIP(addr[:lastColon])
 }

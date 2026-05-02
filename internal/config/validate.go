@@ -335,7 +335,7 @@ func validateConfig(cfg *Config) error {
 
 		// SAFETY
 		// validate rule logic and safety
-		srcRestrictionCheck(&rule)
+		RunStaticChecks(cfg)
 
 	}
 
