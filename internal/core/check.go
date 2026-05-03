@@ -94,6 +94,16 @@ func RunCheck(args []string) {
 
 	tools.Divider()
 
+	// run safety checks w/ pre-apply prompt
+	issues := config.RunStaticChecks(cfg)
+	errCount := config.PrintIssues(issues)
+
+	if errCount > 0 {
+		fmt.Fprintf(os.Stderr, "\n  %s\n",
+			colour.Yellow(fmt.Sprintf("%d safety error(s) detected in config", errCount)),
+		)
+	}
+
 	fmt.Println()
 
 	// if list-ruleset run, output spacer & generated NFTables config

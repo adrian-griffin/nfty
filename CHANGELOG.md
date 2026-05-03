@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.4.1] - 2026-Apr-30
 - `safety.go` init
-- static firewall logic validations
+- static firewall logic, safety, and security validations
+- structured alert system for firewall safety issues
+- static ruleset check for lockout prevention alerts
 
 ## [0.4.0] - 2026-Apr-28
 - `default_rules` adjustments for v6 NDP and DHCPv4/6

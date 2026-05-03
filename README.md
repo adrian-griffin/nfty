@@ -1,5 +1,14 @@
 # nfty
 
+<!-- SHIELDS -->
+[![Version][version-shield]][version-url]
+[![MIT License][license-shield]][license-url]  
+[![Go Reference][reference-shield]][reference-url]
+[![Go Version][goversion-shield]][goversion-url]
+[![Go Report Card][reportcard-shield]][reportcard-url]
+
+<br/>
+
 A network firewall manager for Linux, aimed at simplifying management and providing more visibility, with rollback & lockout-prevention safety features inspired by enterprise network routers, such as Arista/Juniper/Mikrotik, written in go.
 
 - uses `nftables` under the hood
@@ -163,3 +172,19 @@ nfty stores state and metadata in `/var/nfty/`:
 
 When `docker_compat = true`, nfty sets its chain priorities to `filter + 10`, ensuring nfty's rulesets evaluate *after* Docker's auto-generated ones. This lets Docker's networking remain operational, and inter-container or host-level forwarding be handled by nfty.
 
+
+<!-- SHIELD URLS -->
+[version-shield]: https://img.shields.io/github/v/release/adrian-griffin/nfty?label=version
+[version-url]: https://github.com/adrian-griffin/nfty/releases
+
+[reference-shield]: https://pkg.go.dev/badge/github.com/adrian-griffin/nfty.svg
+[reference-url]: https://pkg.go.dev/github.com/adrian-griffin/nfty
+
+[reportcard-shield]: https://goreportcard.com/badge/github.com/adrian-griffin/nfty
+[reportcard-url]: https://goreportcard.com/report/github.com/adrian-griffin/nfty
+
+[license-shield]: https://img.shields.io/github/license/adrian-griffin/nfty
+[license-url]: https://github.com/adrian-griffin/nfty/blob/main/LICENSE
+
+[goversion-shield]: https://img.shields.io/github/go-mod/go-version/adrian-griffin/nfty
+[goversion-url]: https://go.dev/dl/

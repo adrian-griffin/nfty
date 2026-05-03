@@ -13,45 +13,127 @@ import (
 	"github.com/adrian-griffin/nfty/internal/tools"
 )
 
+type Severity int
+
+const (
+	SeverityWarn Severity = iota
+	SeverityError
+)
+
+func (s Severity) String() string {
+	if s == SeverityError {
+		return "ERROR"
+	}
+	return "WARNING"
+}
+
+type Issue struct {
+	Severity Severity
+	Category string
+	RuleRef  string // comment, peer addy, etc.
+	Message  string
+	Hint     string
+}
+
 // run static config checks
-func RunStaticChecks(cfg *Config) {
-	checkSrcRestrictions(cfg)
-	checkChainPolicies(cfg)
+// return issues for check/apply handling
+func RunStaticChecks(cfg *Config) []Issue {
+	var issues []Issue
+	issues = append(issues, checkSrcRestrictions(cfg)...)
+	issues = append(issues, checkChainPolicies(cfg)...)
+	issues = append(issues, CheckDefaultRules(cfg)...)
+
+	return issues
+}
+
+// writes notifications to stderr
+// returns number of found safety issues
+func PrintIssues(issues []Issue) int {
+	if len(issues) == 0 {
+		return 0
+	}
+
+	errCount := 0
+	tools.Divider()
+	for _, i := range issues {
+		var marker string
+		switch i.Severity {
+		case SeverityError:
+			marker = colour.Red("  ✗ ERROR  ")
+			errCount++
+		case SeverityWarn:
+			marker = colour.Yellow("  ⚠ WARN   ")
+		}
+
+		// print rule reference
+		ref := ""
+		if i.RuleRef != "" {
+			ref = colour.DarkGrey(fmt.Sprintf("  [%s]", i.RuleRef))
+		}
+		fmt.Fprintf(os.Stderr, "%s%s%s\n", marker, i.Message, ref)
+
+		// hint/subtext
+		if i.Hint != "" {
+			fmt.Fprintf(os.Stderr, "    %s\n", colour.Grey(i.Hint))
+		}
+	}
+	tools.Divider()
+	return errCount
 }
 
 // validate source restrictions (interfaces, src_ips, etc)
 // warn if open to all
-func checkSrcRestrictions(cfg *Config) {
+func checkSrcRestrictions(cfg *Config) []Issue {
+	var issues []Issue
+
 	for _, rule := range collectAllRules(cfg) {
 		if rule.Disabled {
-			return
+			continue
 		}
-		// warn when a rule does not have any src-ip or in-interface matching (ie: open to all)
-		if len(rule.SrcIPs) == 0 && rule.SrcList == "" && rule.IIF == "" && rule.IIFName == "" {
-			if len(rule.DPort) > 0 {
-				tools.Divider()
-				fmt.Fprintf(os.Stderr, colour.Yellowf("  ⚠ WARNING: Rule %q has dst_port but no source restriction (src_list, src_ips, iifname, etc)\n", rule.Comment))
-				fmt.Fprintf(os.Stderr, colour.Grey("    Leaving the socket open from all addresses and interfaces\n"))
-				tools.Divider()
-			}
+		// legit any sort of filtering is OK
+		if len(rule.SrcIPs) > 0 || rule.SrcList != "" || rule.IIF != "" || rule.IIFName != "" {
+			continue
 		}
+		// only flag if it open a socket
+		if len(rule.DPort) == 0 {
+			continue
+		}
+
+		issues = append(issues, Issue{
+			Severity: SeverityWarn,
+			Category: "no-source-restriction",
+			RuleRef:  rule.Comment,
+			Message:  fmt.Sprintf("Rule %q has dport but no source restriction", rule.Comment),
+			Hint:     "Likely unintended, leaves port open to all hosts. Dangerous if on a public machine.",
+		})
 	}
+
+	return issues
 }
 
 // validate applied chain policies and warn if typically dangerous
-func checkChainPolicies(cfg *Config) {
-	if cfg.Chains.Policy.Input == "accept" {
-		tools.Divider()
-		fmt.Fprintf(os.Stderr, colour.Yellowf("  ⚠ WARNING: Input chain policy is accept\n"))
-		fmt.Fprintf(os.Stderr, colour.Grey("    This is likely unintended, and accepts all traffic to this host\n"))
-		tools.Divider()
+func checkChainPolicies(cfg *Config) []Issue {
+	var issues []Issue
+
+	if strings.EqualFold(cfg.Chains.Policy.Input, "accept") {
+		issues = append(issues, Issue{
+			Severity: SeverityError,
+			Category: "input-chain-accept",
+			RuleRef:  "chains.policy.input",
+			Message:  "Input chain policy is accept. Firewall will allow all input traffic",
+			Hint:     "Opens machine to all incoming connections. Dangerous on a public machine!",
+		})
 	}
+
+	return issues
 }
 
 // validate default/critical rules exist that are covered by default_rules
-func CheckDefaultRules(cfg *Config) {
+func CheckDefaultRules(cfg *Config) []Issue {
+	var issues []Issue
+
 	if cfg.Core.DefaultRules {
-		return
+		return nil
 	}
 
 	// check for critical input rules
@@ -107,37 +189,50 @@ func CheckDefaultRules(cfg *Config) {
 			if portCovers(rule.DPort, 68) && protoIncludes(rule.Protocol, "udp") && rule.Action == "accept" {
 				hasDHCP = true
 			}
+
 		}
 
 		if !hasLoopback {
-			tools.Divider()
-			fmt.Fprintf(os.Stderr, colour.Yellowf("  ⚠ WARNING: [%s] default_rules is disabled and no loopback accept rule found\n", fam.name))
-			fmt.Fprintf(os.Stderr, colour.Grey("    Without 'iif lo accept', local services may fail to communicate\n"))
-			tools.Divider()
+			issues = append(issues, Issue{
+				Severity: SeverityWarn,
+				Category: "no-loopback-input",
+				RuleRef:  fmt.Sprintf("%s.input", fam.name),
+				Message:  "default_rules is disabled and no input loopback accept rule found",
+				Hint:     "Local machine services may break after a few minutes",
+			})
 		}
 
 		if !hasEstablished {
-			tools.Divider()
-			fmt.Fprintf(os.Stderr, colour.Yellowf("  ⚠ WARNING: [%s] default_rules is disabled and no established/related accept rule found\n", fam.name))
-			fmt.Fprintf(os.Stderr, colour.Grey("    Without conntrack state matching, return traffic for outbound connections will be dropped\n"))
-			tools.Divider()
+			issues = append(issues, Issue{
+				Severity: SeverityWarn,
+				Category: "established-related",
+				RuleRef:  fmt.Sprintf("%s.input", fam.name),
+				Message:  "default_rules is disabled and no input established,related rule found",
+				Hint:     "Existing inbound connection states will break unless they are explicitly defined in other rules",
+			})
 		}
 
 		if !hasSSH {
-			tools.Divider()
-			fmt.Fprintf(os.Stderr, colour.Redf("  ⚠ WARNING: [%s] default_rules is disabled and no ssh accept rule found\n", fam.name))
-			fmt.Fprintf(os.Stderr, colour.Yellow("    Any active SSH shell sessions will time out after a few minutes, please rollback\n"))
-			tools.Divider()
+			issues = append(issues, Issue{
+				Severity: SeverityError,
+				Category: "no-ssh-input",
+				RuleRef:  fmt.Sprintf("%s.input.ssh", fam.name),
+				Message:  "default_rules is disabled and no ssh input accept rule found",
+				Hint:     "Any active SSH shell sessions will disconnect/time out after a few minutes!",
+			})
 		}
 
 		if !hasDHCP {
-			tools.Divider()
-			fmt.Fprintf(os.Stderr, colour.Yellowf("  ⚠ WARNING: [%s] default_rules is disabled and no dhcp accept rule found\n", fam.name))
-			fmt.Fprintf(os.Stderr, colour.Grey("    If your device is using DHCP, it will lose its IP after the lease expires, please rollback if needed\n"))
-			tools.Divider()
+			issues = append(issues, Issue{
+				Severity: SeverityError,
+				Category: "no-dhcp-input",
+				RuleRef:  fmt.Sprintf("%s.input.dhcp", fam.name),
+				Message:  "default_rules is disabled and no dhcp input accept rule found",
+				Hint:     "If your machine uses DHCP for IP assignment, it will lose its IP after the lease expires!",
+			})
 		}
-
 	}
+	return issues
 }
 
 type SSHSession struct {

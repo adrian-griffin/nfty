@@ -1,3 +1,5 @@
+// apply.go
+// logic for new ruleset application
 package commit
 
 import (
@@ -78,6 +80,33 @@ func RunApply(args []string) {
 		os.Exit(1)
 	}
 
+	// run safety checks w/ pre-apply prompt
+	issues := config.RunStaticChecks(cfg)
+	errCount := config.PrintIssues(issues)
+
+	if errCount > 0 {
+		fmt.Fprintf(os.Stderr, "\n  %s\n",
+			colour.Yellow(fmt.Sprintf("%d safety error(s) detected in config", errCount)),
+		)
+
+		var confirm string
+		for {
+			fmt.Fprintf(os.Stderr, "  continue anyway? (y/n): ")
+			fmt.Scanln(&confirm)
+
+			switch strings.ToLower(confirm) {
+			case "y":
+			case "n":
+				fmt.Fprintf(os.Stderr, "  %s\n", colour.Yellow("⏹ apply cancelled"))
+				os.Exit(1)
+			default:
+				fmt.Fprintln(os.Stderr, "  invalid input, please try again")
+				continue
+			}
+			break
+		}
+	}
+
 	// collect current ruleset for rollback config
 	currentRuleset, err := nft.ListRulesetScript()
 	if err != nil {
@@ -89,10 +118,6 @@ func RunApply(args []string) {
 		fmt.Fprintf(os.Stderr, "failed to save rollback snapshot: %v\n", err)
 		os.Exit(1)
 	}
-
-	// [TODO]: run safety checks (safety package)
-	config.RunStaticChecks(cfg)
-	config.CheckDefaultRules(cfg)
 
 	fmt.Printf("  %s %s %s\n", colour.Grey("loaded config:"), cfg.Core.Name, colour.DarkGrey(cfg.Core.Description))
 	fmt.Printf("  %s\n", colour.Grey("if not confirmed (due to lockout, terminated ssh session, etc), firewall will revert to previous known good state"))
