@@ -13,6 +13,29 @@ import (
 // max length left-column for labels
 const LabelWidth = 18
 
+// struct for stderr alerts/warns/errs
+type Issue struct {
+	Severity Severity
+	Category string
+	RuleRef  string
+	Message  string
+	Hint     string
+}
+
+type Severity int
+
+const (
+	SeverityWarn Severity = iota
+	SeverityError
+)
+
+func (s Severity) String() string {
+	if s == SeverityError {
+		return "ERROR"
+	}
+	return "WARNING"
+}
+
 // reorders flag args to allow dynamic flag inputs from user
 func SortFlags(args []string) []string {
 	var flags, positional []string
@@ -34,6 +57,20 @@ func Label(s string) string {
 // writes section divier
 func Divider() {
 	fmt.Println(colour.Grey("  " + strings.Repeat("─", 52)))
+}
+
+func CommandExecuteHeader(subcommand string) {
+	// hostname for the header line
+	hostname, _ := os.Hostname()
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	fmt.Printf("\n  %s %s%s%s\n",
+		colour.Grey("nfty"),
+		colour.Bold(subcommand),
+		strings.Repeat(" ", 15),
+		colour.DarkGrey(hostname+" · "+now),
+	)
+	Divider()
 }
 
 // gathers file path & last-edited time
@@ -186,4 +223,40 @@ func ValidateCIDR(s string) error {
 		return nil
 	}
 	return fmt.Errorf("not a valid IP or CIDR: %q", s)
+}
+
+// writes notifications to stderr
+// returns number of alerts
+func PrintIssues(issues []Issue) int {
+	if len(issues) == 0 {
+		return 0
+	}
+
+	errCount := 0
+	Divider()
+	for _, i := range issues {
+		var marker string
+		switch i.Severity {
+		case SeverityError:
+			marker = colour.Red("  ✗ ERROR  ")
+		case SeverityWarn:
+			marker = colour.Yellow("  ⚠ WARN   ")
+		}
+
+		errCount++
+		// print rule reference
+		ref := ""
+		if i.RuleRef != "" {
+			ref = colour.DarkGrey(fmt.Sprintf("  [%s]", i.RuleRef))
+		}
+		fmt.Fprintf(os.Stderr, "%s%s%s\n", marker, i.Message, ref)
+
+		// hint/subtext
+		if i.Hint != "" {
+			fmt.Fprintf(os.Stderr, "    %s\n", colour.Grey(i.Hint))
+		}
+		Divider()
+	}
+	Divider()
+	return errCount
 }

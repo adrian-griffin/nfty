@@ -11,9 +11,12 @@ import (
 	"github.com/adrian-griffin/nfty/internal/core"
 	"github.com/adrian-griffin/nfty/internal/meta"
 	"github.com/adrian-griffin/nfty/internal/nft"
+	"github.com/adrian-griffin/nfty/internal/tools"
 )
 
 func main() {
+
+	var issues []tools.Issue
 
 	// handle version flagging before any checks
 	if len(os.Args) > 1 {
@@ -37,6 +40,14 @@ func main() {
 	if err := nft.CheckBinary(); err != nil {
 		fmt.Fprintf(os.Stderr, "nfty startup failed: %v\n", err)
 		os.Exit(1)
+
+		issues = append(issues, tools.Issue{
+			Severity: tools.SeverityError,
+			Category: "nftables-binary",
+			RuleRef:  "",
+			Message:  "NFTables binary cannot be located",
+			Hint:     "Please ensure it is installed and reachable via PATH",
+		})
 	}
 
 	// subcommand routing

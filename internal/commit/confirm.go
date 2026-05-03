@@ -3,8 +3,6 @@ package commit
 import (
 	"fmt"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/adrian-griffin/nfty/internal/colour"
 	"github.com/adrian-griffin/nfty/internal/nft"
@@ -18,19 +16,8 @@ func RunConfirm() {
 		return
 	}
 
-	// hostname for the header line
-	hostname, _ := os.Hostname()
-	now := time.Now().Format("2006-01-02 15:04:05")
-
-	// execution header
-	fmt.Printf("  %s %s%s%s\n",
-		colour.Grey("nfty"),
-		colour.Bold("confirm"),
-		strings.Repeat(" ", 15),
-		colour.DarkGrey(hostname+" · "+now),
-	)
-
-	tools.Divider()
+	// print header output
+	tools.CommandExecuteHeader("confirm")
 
 	state, err := LoadPending()
 	if err == nil {

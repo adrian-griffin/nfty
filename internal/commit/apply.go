@@ -39,18 +39,8 @@ func RunApply(args []string) {
 		os.Exit(1)
 	}
 
-	// hostname for the header line
-	hostname, _ := os.Hostname()
-	now := time.Now().Format("2006-01-02 15:04:05")
-
-	fmt.Printf("  %s %s%s%s\n",
-		colour.Grey("nfty"),
-		colour.Bold("apply"),
-		strings.Repeat(" ", 15),
-		colour.DarkGrey(hostname+" · "+now),
-	)
-
-	tools.Divider()
+	// print header output
+	tools.CommandExecuteHeader("apply")
 
 	// load configfile from path
 	cfg, err := config.Load(configPath)
@@ -82,7 +72,7 @@ func RunApply(args []string) {
 
 	// run safety checks w/ pre-apply prompt
 	issues := config.RunSafetyChecks(cfg)
-	errCount := config.PrintIssues(issues)
+	errCount := tools.PrintIssues(issues)
 
 	if errCount > 0 {
 		fmt.Fprintf(os.Stderr, "\n  %s\n",
@@ -155,17 +145,14 @@ func RunApply(args []string) {
 				}
 				fmt.Printf("%s\n", colour.Green("  ✓ ruleset applied and committed"))
 
-				// skip-confirm: persist immediately, no timer
-				if cfg.Core.Persist {
-					// save running.nft after application
-					currentRuleset, err := nft.ListRulesetScript()
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "failed to collect current ruleset: %v\n", err)
-					}
+				// save running.nft after application
+				currentRuleset, err := nft.ListRulesetScript()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "failed to collect current ruleset: %v\n", err)
+				}
 
-					if err := SaveRunningRuleset(string(currentRuleset)); err != nil {
-						fmt.Fprintf(os.Stderr, "failed to persist ruleset: %v\n", err)
-					}
+				if err := SaveRunningRuleset(string(currentRuleset)); err != nil {
+					fmt.Fprintf(os.Stderr, "failed to save ruleset: %v\n", err)
 				}
 
 				if err := WriteLastApplyDirect(configPath, checksum); err != nil {

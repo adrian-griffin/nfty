@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - ipv6-specific safety checks
 - .toml postrouting/output chain validation improvements
 - improved validation looping logic, better IP-family aware address-list validations
+- formalized stderr issue alert framework, command execution header framework
 
 ## [0.4.2] - 2026-May-1
 - `safety.go` init

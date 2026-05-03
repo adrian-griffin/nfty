@@ -5,27 +5,12 @@ package config
 import (
 	"fmt"
 	"net"
-	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/adrian-griffin/nfty/internal/colour"
 	"github.com/adrian-griffin/nfty/internal/tools"
 )
-
-type Severity int
-
-const (
-	SeverityWarn Severity = iota
-	SeverityError
-)
-
-func (s Severity) String() string {
-	if s == SeverityError {
-		return "ERROR"
-	}
-	return "WARNING"
-}
 
 type familyInput struct {
 	name  string
@@ -37,18 +22,10 @@ type SSHSession struct {
 	PeerAddr string // raw address as reported by ss, for display
 }
 
-type Issue struct {
-	Severity Severity
-	Category string
-	RuleRef  string
-	Message  string
-	Hint     string
-}
-
 // run static config checks
 // return issues for check/apply handling
-func RunSafetyChecks(cfg *Config) []Issue {
-	var issues []Issue
+func RunSafetyChecks(cfg *Config) []tools.Issue {
+	var issues []tools.Issue
 	issues = append(issues, checkSrcRestrictions(cfg)...)
 	issues = append(issues, checkChainPolicies(cfg)...)
 	issues = append(issues, CheckDefaultRules(cfg)...)
@@ -58,46 +35,10 @@ func RunSafetyChecks(cfg *Config) []Issue {
 	return issues
 }
 
-// writes notifications to stderr
-// returns number of found safety issues
-func PrintIssues(issues []Issue) int {
-	if len(issues) == 0 {
-		return 0
-	}
-
-	errCount := 0
-	tools.Divider()
-	for _, i := range issues {
-		var marker string
-		switch i.Severity {
-		case SeverityError:
-			marker = colour.Red("  ✗ ERROR  ")
-			errCount++
-		case SeverityWarn:
-			marker = colour.Yellow("  ⚠ WARN   ")
-		}
-
-		// print rule reference
-		ref := ""
-		if i.RuleRef != "" {
-			ref = colour.DarkGrey(fmt.Sprintf("  [%s]", i.RuleRef))
-		}
-		fmt.Fprintf(os.Stderr, "%s%s%s\n", marker, i.Message, ref)
-
-		// hint/subtext
-		if i.Hint != "" {
-			fmt.Fprintf(os.Stderr, "    %s\n", colour.Grey(i.Hint))
-		}
-		tools.Divider()
-	}
-	tools.Divider()
-	return errCount
-}
-
 // validate source restrictions (interfaces, src_ips, etc)
 // warn if open to all
-func checkSrcRestrictions(cfg *Config) []Issue {
-	var issues []Issue
+func checkSrcRestrictions(cfg *Config) []tools.Issue {
+	var issues []tools.Issue
 
 	for _, rule := range collectRulesMeta(cfg) {
 		if rule.Disabled {
@@ -120,8 +61,8 @@ func checkSrcRestrictions(cfg *Config) []Issue {
 			continue
 		}
 
-		issues = append(issues, Issue{
-			Severity: SeverityWarn,
+		issues = append(issues, tools.Issue{
+			Severity: tools.SeverityWarn,
 			Category: "no-source-restriction",
 			RuleRef:  rule.Comment,
 			Message:  fmt.Sprintf("Rule %q has dport but no source restriction", rule.Comment),
@@ -132,12 +73,12 @@ func checkSrcRestrictions(cfg *Config) []Issue {
 }
 
 // validate applied chain policies and warn if typically dangerous
-func checkChainPolicies(cfg *Config) []Issue {
-	var issues []Issue
+func checkChainPolicies(cfg *Config) []tools.Issue {
+	var issues []tools.Issue
 
 	if strings.EqualFold(cfg.Chains.Policy.Input, "accept") {
-		issues = append(issues, Issue{
-			Severity: SeverityError,
+		issues = append(issues, tools.Issue{
+			Severity: tools.SeverityError,
 			Category: "input-chain-accept",
 			RuleRef:  "chains.policy.input",
 			Message:  "Input chain policy is accept. Firewall will allow all input traffic",
@@ -146,8 +87,8 @@ func checkChainPolicies(cfg *Config) []Issue {
 	}
 
 	if strings.EqualFold(cfg.Chains.Policy.Forward, "accept") {
-		issues = append(issues, Issue{
-			Severity: SeverityWarn,
+		issues = append(issues, tools.Issue{
+			Severity: tools.SeverityWarn,
 			Category: "forward-chain-accept",
 			RuleRef:  "chains.policy.forward",
 			Message:  "Forward chain policy is accept. Firewall will allow all forwarded traffic",
@@ -158,8 +99,8 @@ func checkChainPolicies(cfg *Config) []Issue {
 	return issues
 }
 
-func CheckSSHRule(cfg *Config) []Issue {
-	var issues []Issue
+func CheckSSHRule(cfg *Config) []tools.Issue {
+	var issues []tools.Issue
 	for _, fam := range activeFamilies(cfg) {
 		hasSSH := false
 		for _, rule := range fam.input {
@@ -174,8 +115,8 @@ func CheckSSHRule(cfg *Config) []Issue {
 			}
 		}
 		if !hasSSH {
-			issues = append(issues, Issue{
-				Severity: SeverityError,
+			issues = append(issues, tools.Issue{
+				Severity: tools.SeverityError,
 				Category: "no-ssh-input",
 				RuleRef:  fmt.Sprintf("%s.input.ssh", fam.name),
 				Message:  "No ssh input accept rule found",
@@ -188,8 +129,8 @@ func CheckSSHRule(cfg *Config) []Issue {
 }
 
 // validate default/critical rules exist that are covered by default_rules
-func CheckDefaultRules(cfg *Config) []Issue {
-	var issues []Issue
+func CheckDefaultRules(cfg *Config) []tools.Issue {
+	var issues []tools.Issue
 	if cfg.Core.DefaultRules {
 		return nil
 	}
@@ -242,8 +183,8 @@ func CheckDefaultRules(cfg *Config) []Issue {
 		}
 
 		if !hasLoopback {
-			issues = append(issues, Issue{
-				Severity: SeverityWarn,
+			issues = append(issues, tools.Issue{
+				Severity: tools.SeverityWarn,
 				Category: "no-loopback-input",
 				RuleRef:  fmt.Sprintf("%s.input", fam.name),
 				Message:  "default_rules is disabled and no input loopback accept rule found",
@@ -252,8 +193,8 @@ func CheckDefaultRules(cfg *Config) []Issue {
 		}
 
 		if !hasEstablished {
-			issues = append(issues, Issue{
-				Severity: SeverityWarn,
+			issues = append(issues, tools.Issue{
+				Severity: tools.SeverityWarn,
 				Category: "established-related",
 				RuleRef:  fmt.Sprintf("%s.input", fam.name),
 				Message:  "default_rules is disabled and no input established,related rule found",
@@ -262,8 +203,8 @@ func CheckDefaultRules(cfg *Config) []Issue {
 		}
 
 		if fam.name == "ipv4" && !hasDHCPv4 {
-			issues = append(issues, Issue{
-				Severity: SeverityError,
+			issues = append(issues, tools.Issue{
+				Severity: tools.SeverityError,
 				Category: "no-dhcpv4-input",
 				RuleRef:  "ipv4.input.dhcp",
 				Message:  "default_rules is disabled and no ipv4 dhcp input accept rule found",
@@ -272,8 +213,8 @@ func CheckDefaultRules(cfg *Config) []Issue {
 		}
 
 		if fam.name == "ipv6" && !hasICMPv6 {
-			issues = append(issues, Issue{
-				Severity: SeverityWarn,
+			issues = append(issues, tools.Issue{
+				Severity: tools.SeverityWarn,
 				Category: "no-icmpv6-input",
 				RuleRef:  "ipv6.input.icmpv6",
 				Message:  "default_rules is disabled and no icmpv6 input accept rule found",
@@ -299,11 +240,11 @@ func activeFamilies(cfg *Config) []familyInput {
 // validates that every currently-connected ssh session is explicitly allowed
 // if not, ssh terminal disconnect can occur
 // If `ss` is unavailable, return an Error Issue
-func CheckSSHLockout(cfg *Config) []Issue {
+func CheckSSHLockout(cfg *Config) []tools.Issue {
 	sessions, err := DetectSSHSessions()
 	if err != nil {
-		return []Issue{{
-			Severity: SeverityWarn,
+		return []tools.Issue{{
+			Severity: tools.SeverityWarn,
 			Category: "ssh-detect-failed",
 			Message:  fmt.Sprintf("Could not detect active SSH sessions: %v", err),
 			Hint:     "Lockout safety check skipped. Verify your SSH allowlist manually",
@@ -313,27 +254,29 @@ func CheckSSHLockout(cfg *Config) []Issue {
 		return nil
 	}
 
-	var issues []Issue
+	var issues []tools.Issue
 
 	// for each session pulled from ss, validate peer IP allowed for SSH
 	for _, sess := range sessions {
 		var rules []Rule
 		var lists map[string]AddressList
+		fam := "ipv4"
 		if sess.PeerIP.To4() != nil {
 			rules = cfg.Chains.IPv4.Input
 			lists = cfg.Lists.IPv4
 		} else {
 			rules = cfg.Chains.IPv6.Input
 			lists = cfg.Lists.IPv6
+			fam = "ipv6"
 		}
 
 		if !peerAllowedSSH(sess.PeerIP, rules, lists) {
-			issues = append(issues, Issue{
-				Severity: SeverityError,
+			issues = append(issues, tools.Issue{
+				Severity: tools.SeverityError,
 				Category: "ssh-lockout",
-				RuleRef:  sess.PeerAddr,
-				Message:  fmt.Sprintf("Active SSH peer %s will be locked out by this config", sess.PeerIP),
-				Hint:     "Allow this IP to your SSH list if needed",
+				RuleRef:  fmt.Sprintf("%s.input.ssh", fam),
+				Message:  fmt.Sprintf("Active SSH peer %s will be locked out by this config", colour.Red(sess.PeerIP.String())),
+				Hint:     "Allow this IP to your SSH list if you dont want to block its ssh access",
 			})
 		}
 	}

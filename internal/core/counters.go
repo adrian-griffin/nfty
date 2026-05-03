@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/adrian-griffin/nfty/internal/colour"
 	"github.com/adrian-griffin/nfty/internal/nft"
@@ -147,22 +146,12 @@ func RunCounters() {
 	}
 
 	if len(counts) == 0 {
-		fmt.Println("no nfty counters found, try re-applying nfty config")
+		fmt.Printf("no nfty counters found, try re-applying nfty config")
 		return
 	}
 
-	// hostname for the header line
-	hostname, _ := os.Hostname()
-	now := time.Now().Format("2006-01-02 15:04:05")
-
-	// execution header
-	fmt.Printf("  %s %s%s%s\n",
-		colour.Grey("nfty"),
-		colour.Bold("counters"),
-		strings.Repeat(" ", 15),
-		colour.DarkGrey(hostname+" · "+now),
-	)
-	fmt.Println()
+	// print header output
+	tools.CommandExecuteHeader("counters")
 
 	const commentWidth = 50
 

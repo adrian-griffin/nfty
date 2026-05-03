@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/adrian-griffin/nfty/internal/colour"
@@ -20,20 +19,8 @@ func RunStatus() {
 	listRuleset := fs.Bool("list-ruleset", false, "show full nftables ruleset")
 	fs.Parse(args)
 
-	// hostname for the header line
-	hostname, _ := os.Hostname()
-	now := time.Now().Format("2006-01-02 15:04:05")
-
-	// execution header
-	fmt.Printf("  %s %s%s%s\n",
-		colour.Grey("nfty"),
-		colour.Bold("status"),
-		strings.Repeat(" ", 15),
-		colour.DarkGrey(hostname+" · "+now),
-	)
-	fmt.Println()
-
-	tools.Divider()
+	// print header output
+	tools.CommandExecuteHeader("status")
 
 	// ~~ pending output
 	if commit.IsPending() {

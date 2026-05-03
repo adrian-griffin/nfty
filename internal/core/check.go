@@ -6,8 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/adrian-griffin/nfty/internal/colour"
 	"github.com/adrian-griffin/nfty/internal/config"
@@ -30,19 +28,8 @@ func RunCheck(args []string) {
 		os.Exit(1)
 	}
 
-	// hostname for the header line
-	hostname, _ := os.Hostname()
-	now := time.Now().Format("2006-01-02 15:04:05")
-
-	// execution header
-	fmt.Printf("  %s %s%s%s\n",
-		colour.Grey("nfty"),
-		colour.Bold("check"),
-		strings.Repeat(" ", 15),
-		colour.DarkGrey(hostname+" · "+now),
-	)
-
-	tools.Divider()
+	// print header output
+	tools.CommandExecuteHeader("check")
 
 	// load config
 	configPath := fs.Arg(0) // fixed to grab first non-flag arg, rather than raw first flag
@@ -98,7 +85,7 @@ func RunCheck(args []string) {
 
 	// run safety checks
 	issues := config.RunSafetyChecks(cfg)
-	errCount := config.PrintIssues(issues)
+	errCount := tools.PrintIssues(issues)
 
 	if errCount > 0 {
 		fmt.Fprintf(os.Stderr, "\n  %s\n",
