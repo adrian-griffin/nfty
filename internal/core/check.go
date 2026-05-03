@@ -1,3 +1,5 @@
+// check.go
+// runs toml file check validations
 package core
 
 import (

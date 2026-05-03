@@ -99,15 +99,23 @@ func PrintIssues(issues []Issue) int {
 func checkSrcRestrictions(cfg *Config) []Issue {
 	var issues []Issue
 
-	for _, rule := range collectAllRules(cfg) {
+	for _, rule := range collectRulesMeta(cfg) {
 		if rule.Disabled {
 			continue
 		}
-		// legit any sort of filtering is OK
+		// if postroute + masq, skip
+		if rule.Chain == "postrouting" && rule.Action == "masquerade" {
+			continue
+		}
+		// output rules dont need src restriction
+		if rule.Chain == "output" {
+			continue
+		}
+		// legit any src restriction = OK
 		if len(rule.SrcIPs) > 0 || rule.SrcList != "" || rule.IIF != "" || rule.IIFName != "" {
 			continue
 		}
-		// only flag if it open a socket
+		// no socket on machine, skip
 		if len(rule.DPort) == 0 {
 			continue
 		}
@@ -120,7 +128,6 @@ func checkSrcRestrictions(cfg *Config) []Issue {
 			Hint:     "Likely unintended, leaves port open to all hosts. Dangerous if on a public machine.",
 		})
 	}
-
 	return issues
 }
 

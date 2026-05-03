@@ -203,6 +203,13 @@ func normalizeRateLimit(rate string) (string, error) {
 	return parts[0] + "/" + unit, nil
 }
 
+// rule meta information, not defined per-rule in toml
+type metaRule struct {
+	Rule
+	Family string // "ipv4" or "ipv6"
+	Chain  string // "input", "forward", "output", "postrouting"
+}
+
 // defines single rule entry, maps directly to nftables design
 type Rule struct {
 	Comment   string      `toml:"comment"`    // name and description
@@ -221,7 +228,7 @@ type Rule struct {
 	DstList   string      `toml:"dst_list"`   // destination address list
 	DstIPs    StringList  `toml:"dst_ips"`    // destination ip array
 	SPort     []PortValue `toml:"sport"`      // source port
-	Disabled  bool        `toml:"disable"`
+	Disabled  bool        `toml:"disable"`    // disable rule
 }
 
 // define rate-limiter objects
@@ -350,6 +357,7 @@ func validateCIDR(s string) error {
 	return fmt.Errorf("not a valid IP or CIDR: %q", s)
 }
 
+// LEGACY:
 // flattens all chains' rules to a single slice for validation passes
 func collectAllRules(cfg *Config) []Rule {
 	var rules []Rule
@@ -364,6 +372,40 @@ func collectAllRules(cfg *Config) []Rule {
 		cfg.Chains.IPv6.Postrouting,
 	} {
 		rules = append(rules, chain...)
+	}
+	return rules
+}
+
+// flattens all chains' rules to a single slice for validation passes
+// now with metadata!
+func collectRulesMeta(cfg *Config) []metaRule {
+	var rules []metaRule
+
+	type chainSource struct {
+		family string
+		chain  string
+		rules  []Rule
+	}
+
+	sources := []chainSource{
+		{"ipv4", "input", cfg.Chains.IPv4.Input},
+		{"ipv4", "forward", cfg.Chains.IPv4.Forward},
+		{"ipv4", "output", cfg.Chains.IPv4.Output},
+		{"ipv4", "postrouting", cfg.Chains.IPv4.Postrouting},
+		{"ipv6", "input", cfg.Chains.IPv6.Input},
+		{"ipv6", "forward", cfg.Chains.IPv6.Forward},
+		{"ipv6", "output", cfg.Chains.IPv6.Output},
+		{"ipv6", "postrouting", cfg.Chains.IPv6.Postrouting},
+	}
+
+	for _, src := range sources {
+		for _, rule := range src.rules {
+			rules = append(rules, metaRule{
+				Rule:   rule,
+				Family: src.family,
+				Chain:  src.chain,
+			})
+		}
 	}
 	return rules
 }

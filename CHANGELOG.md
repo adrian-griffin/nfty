@@ -4,13 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.4.2] - 2026-May-2
+## [0.4.3] - 2026-May-3
+- ssh lockout detection and alerting, dynamic ruleset safety framework
+- ipv6-specific safety checks
+- .toml postrouting/output chain validation improvements
+
+## [0.4.2] - 2026-May-1
 - `safety.go` init
 - firewall logic, safety, and security validations
 - structured alert system for firewall safety issues
 - static ruleset check for lockout prevention alerts
-- ssh lockout detection and alerting, dynamic ruleset safety framework
-- ipv6-specific safety checks
+
 
 ## [0.4.0] - 2026-Apr-28
 - `default_rules` adjustments for v6 NDP and DHCPv4/6

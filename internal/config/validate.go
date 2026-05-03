@@ -43,8 +43,8 @@ func validateConfig(cfg *Config) error {
 		return err
 	}
 
-	if cfg.Core.ICMPLimit == "" {
-		return fmt.Errorf("core.icmp_limit is required")
+	if cfg.Core.DefaultRules && cfg.Core.ICMPLimit == "" {
+		return fmt.Errorf("core.icmp_limit is required when default_rules is enabled")
 	}
 	if err := validateNFTString(cfg.Core.ICMPLimit, "core.icmp_limit"); err != nil {
 		return err
@@ -121,7 +121,7 @@ func validateConfig(cfg *Config) error {
 	}
 
 	// collect and validate rules
-	allRules := collectAllRules(cfg)
+	allRules := collectRulesMeta(cfg)
 	for _, rule := range allRules {
 
 		// require comment cuz its used as in
@@ -200,7 +200,7 @@ func validateConfig(cfg *Config) error {
 			"new": true, "established": true, "related": true, "invalid": true, "untracked": true,
 		}
 		for _, state := range rule.CtState {
-			if !validStates[state] {
+			if !validStates[strings.ToLower(state)] {
 				return fmt.Errorf("rule %q: invalid ct_state %q", rule.Comment, state)
 			}
 		}
@@ -212,10 +212,13 @@ func validateConfig(cfg *Config) error {
 
 		// prevent empty src_list
 		if rule.SrcList != "" {
-			if list, ok := cfg.Lists.IPv4[rule.SrcList]; ok && len(list.Entries) == 0 {
-				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.SrcList)
+			var lists map[string]AddressList
+			if rule.Family == "ipv4" {
+				lists = cfg.Lists.IPv4
+			} else {
+				lists = cfg.Lists.IPv6
 			}
-			if list, ok := cfg.Lists.IPv6[rule.SrcList]; ok && len(list.Entries) == 0 {
+			if list, ok := lists[rule.SrcList]; ok && len(list.Entries) == 0 {
 				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.SrcList)
 			}
 		}
@@ -230,14 +233,18 @@ func validateConfig(cfg *Config) error {
 			}
 		}
 
-		// validate src_list references only existing lists
-		if rule.SrcList != "" {
-			if _, ok := cfg.Lists.IPv4[rule.SrcList]; !ok {
-				if _, ok := cfg.Lists.IPv6[rule.SrcList]; !ok {
-					return fmt.Errorf("rule: %q references non-existent address list %q", rule.Comment, rule.SrcList)
-				}
+		if rule.DstList != "" {
+			var lists map[string]AddressList
+			if rule.Family == "ipv4" {
+				lists = cfg.Lists.IPv4
+			} else {
+				lists = cfg.Lists.IPv6
+			}
+			if list, ok := lists[rule.DstList]; ok && len(list.Entries) == 0 {
+				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.DstList)
 			}
 		}
+
 		// validate dst_list references only existing lists
 		if rule.DstList != "" {
 			if _, ok := cfg.Lists.IPv4[rule.DstList]; !ok {
@@ -318,6 +325,30 @@ func validateConfig(cfg *Config) error {
 				rule.Comment, rule.Action)
 		}
 
+		// ensure masq is only used on postrouting
+		if rule.Action == "masquerade" && rule.Chain != "postrouting" {
+			return fmt.Errorf("rule %q: masquerade is only valid on postrouting chains, found in %s.%s",
+				rule.Comment, rule.Family, rule.Chain)
+		}
+
+		// ensure iifname is not used with output chan
+		if rule.IIFName != "" && (rule.Chain == "output" || rule.Chain == "postrouting") {
+			return fmt.Errorf("rule %q: iifname has no effect on %s chain", rule.Comment, rule.Chain)
+		}
+		// ensure oifname is not used with input chain
+		if rule.OIFName != "" && rule.Chain == "input" {
+			return fmt.Errorf("rule %q: oifname has no effect on input chain", rule.Comment)
+		}
+
+		// max cap rule comment
+		if len("nfty: "+rule.Comment) > 64 {
+			return fmt.Errorf("rule %q: comment too long", rule.Comment)
+		}
+		// max cap log prefix
+		if rule.Log != nil && len(rule.Log.Prefix) > 64 {
+			return fmt.Errorf("rule %q: log prefix too long", rule.Comment)
+		}
+
 		// if over_limit is set, ensure rate_limit is set as well
 		if rule.OverLimit != "" && rule.RateLimit == nil {
 			return fmt.Errorf("rule %q: over_limit requires rate_limit", rule.Comment)
@@ -333,6 +364,35 @@ func validateConfig(cfg *Config) error {
 			return fmt.Errorf("rule %q: sport requires a protocol (tcp or udp)", rule.Comment)
 		}
 
+		// cannot log & rlimit
+		if rule.RateLimit != nil && rule.Log != nil {
+			return fmt.Errorf("rule %q: log and rate_limit cannot be used together",
+				rule.Comment)
+		}
+
+	}
+
+	// validate src_list references only existing lists
+	for _, rule := range collectRulesMeta(cfg) {
+		var lists map[string]AddressList
+		if rule.Family == "ipv4" {
+			lists = cfg.Lists.IPv4
+		} else {
+			lists = cfg.Lists.IPv6
+		}
+
+		if rule.SrcList != "" {
+			if _, ok := lists[rule.SrcList]; !ok {
+				return fmt.Errorf("rule %q in %s chain references list %q which doesn't exist in %s lists",
+					rule.Comment, rule.Family, rule.SrcList, rule.Family)
+			}
+		}
+		if rule.DstList != "" {
+			if _, ok := lists[rule.DstList]; !ok {
+				return fmt.Errorf("rule %q in %s chain references list %q which doesn't exist in %s lists",
+					rule.Comment, rule.Family, rule.DstList, rule.Family)
+			}
+		}
 	}
 
 	// validate no dupes on comments
