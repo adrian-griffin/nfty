@@ -42,7 +42,15 @@ func RunStaticChecks(cfg *Config) []Issue {
 	issues = append(issues, checkSrcRestrictions(cfg)...)
 	issues = append(issues, checkChainPolicies(cfg)...)
 	issues = append(issues, CheckDefaultRules(cfg)...)
+	issues = append(issues, CheckSSHRule(cfg)...)
 
+	return issues
+}
+
+// run dynamic/system-interactive checks
+func RunDynamicChecks(cfg *Config) []Issue {
+	var issues []Issue
+	issues = append(issues, CheckSSHLockout(cfg)...)
 	return issues
 }
 
@@ -76,6 +84,7 @@ func PrintIssues(issues []Issue) int {
 		if i.Hint != "" {
 			fmt.Fprintf(os.Stderr, "    %s\n", colour.Grey(i.Hint))
 		}
+		tools.Divider()
 	}
 	tools.Divider()
 	return errCount
@@ -125,6 +134,55 @@ func checkChainPolicies(cfg *Config) []Issue {
 		})
 	}
 
+	if strings.EqualFold(cfg.Chains.Policy.Forward, "accept") {
+		issues = append(issues, Issue{
+			Severity: SeverityWarn,
+			Category: "forward-chain-accept",
+			RuleRef:  "chains.policy.forward",
+			Message:  "Forward chain policy is accept. Firewall will allow all forwarded traffic",
+			Hint:     "This can make sense on some docker or routing hosts, but is possibly unintended",
+		})
+	}
+
+	return issues
+}
+
+func CheckSSHRule(cfg *Config) []Issue {
+	var issues []Issue
+
+	families := []struct {
+		name  string
+		input []Rule
+	}{
+		{"ipv4", cfg.Chains.IPv4.Input},
+		{"ipv6", cfg.Chains.IPv6.Input},
+	}
+
+	// for both v4 & v6
+	for _, fam := range families {
+		hasSSH := false
+		for _, rule := range fam.input {
+			if rule.Disabled {
+				continue
+			}
+
+			// check for ssh
+			if portCovers(rule.DPort, 22) && protoIncludes(rule.Protocol, "tcp") && rule.Action == "accept" {
+				hasSSH = true
+				break
+			}
+		}
+		if !hasSSH {
+			issues = append(issues, Issue{
+				Severity: SeverityError,
+				Category: "no-ssh-input",
+				RuleRef:  fmt.Sprintf("%s.input.ssh", fam.name),
+				Message:  "No ssh input accept rule found",
+				Hint:     "Any active SSH shell sessions will disconnect/time out after a few minutes!",
+			})
+		}
+	}
+
 	return issues
 }
 
@@ -149,8 +207,7 @@ func CheckDefaultRules(cfg *Config) []Issue {
 	for _, fam := range families {
 		hasLoopback := false
 		hasEstablished := false
-		hasSSH := false
-		hasDHCP := false
+		hasDHCPv4 := false
 
 		for _, rule := range fam.input {
 			if rule.Disabled {
@@ -180,14 +237,11 @@ func CheckDefaultRules(cfg *Config) []Issue {
 				}
 			}
 
-			// check for ssh
-			if portCovers(rule.DPort, 22) && protoIncludes(rule.Protocol, "tcp") && rule.Action == "accept" {
-				hasSSH = true
-			}
-
-			// check for dhcp
-			if portCovers(rule.DPort, 68) && protoIncludes(rule.Protocol, "udp") && rule.Action == "accept" {
-				hasDHCP = true
+			// check for dhcpv4
+			if fam.name == "ipv4" {
+				if portCovers(rule.DPort, 68) && protoIncludes(rule.Protocol, "udp") && rule.Action == "accept" {
+					hasDHCPv4 = true
+				}
 			}
 
 		}
@@ -212,17 +266,7 @@ func CheckDefaultRules(cfg *Config) []Issue {
 			})
 		}
 
-		if !hasSSH {
-			issues = append(issues, Issue{
-				Severity: SeverityError,
-				Category: "no-ssh-input",
-				RuleRef:  fmt.Sprintf("%s.input.ssh", fam.name),
-				Message:  "default_rules is disabled and no ssh input accept rule found",
-				Hint:     "Any active SSH shell sessions will disconnect/time out after a few minutes!",
-			})
-		}
-
-		if !hasDHCP {
+		if !hasDHCPv4 {
 			issues = append(issues, Issue{
 				Severity: SeverityError,
 				Category: "no-dhcp-input",
@@ -238,6 +282,133 @@ func CheckDefaultRules(cfg *Config) []Issue {
 type SSHSession struct {
 	PeerIP   net.IP // ssh session ip
 	PeerAddr string // raw address as reported by ss, for display
+}
+
+// validates that every currently-connected ssh session is explicitly allowed
+// if not, ssh terminal disconnect can occur
+// If `ss` is unavailable, return an Error Issue
+func CheckSSHLockout(cfg *Config) []Issue {
+	sessions, err := DetectSSHSessions()
+	if err != nil {
+		return []Issue{{
+			Severity: SeverityWarn,
+			Category: "ssh-detect-failed",
+			Message:  fmt.Sprintf("Could not detect active SSH sessions: %v", err),
+			Hint:     "Lockout safety check skipped. Verify your SSH allowlist manually",
+		}}
+	}
+	if len(sessions) == 0 {
+		return nil
+	}
+
+	var issues []Issue
+
+	// for each session pulled from ss, validate peer IP allowed for SSH
+	for _, sess := range sessions {
+		var rules []Rule
+		var lists map[string]AddressList
+		if sess.PeerIP.To4() != nil {
+			rules = cfg.Chains.IPv4.Input
+			lists = cfg.Lists.IPv4
+		} else {
+			rules = cfg.Chains.IPv6.Input
+			lists = cfg.Lists.IPv6
+		}
+
+		if !peerAllowedSSH(sess.PeerIP, rules, lists) {
+			issues = append(issues, Issue{
+				Severity: SeverityError,
+				Category: "ssh-lockout",
+				RuleRef:  sess.PeerAddr,
+				Message:  fmt.Sprintf("Active SSH peer %s will be locked out by this config", sess.PeerIP),
+				Hint:     "Allow this IP to your SSH list if needed",
+			})
+		}
+	}
+	return issues
+}
+
+// walks user rules and detects if peer IP is SSH allowed
+func peerAllowedSSH(peer net.IP, rules []Rule, lists map[string]AddressList) bool {
+	for _, rule := range rules {
+		// skip if disabled or non-ssh rule
+		if rule.Disabled || !ruleMatchesSSH(rule) {
+			continue
+		}
+		if !ruleMatchesPeer(peer, rule, lists) {
+			continue
+		}
+		switch strings.ToLower(rule.Action) {
+		case "accept":
+			return true
+		case "drop", "reject":
+			return false
+		}
+	}
+	return false
+}
+
+// detects if rule pertains to ssh 22/tcp
+func ruleMatchesSSH(rule Rule) bool {
+	has22 := false
+	// iterate dport list
+	for _, p := range rule.DPort {
+		if 22 >= p.Start && 22 <= p.End {
+			has22 = true
+			break
+		}
+	}
+	if !has22 {
+		return false
+	}
+	// protocol must include tcp
+	if len(rule.Protocol.Protocols) == 0 {
+		return true
+	}
+	for _, p := range rule.Protocol.Protocols {
+		if strings.EqualFold(p, "tcp") {
+			return true
+		}
+	}
+	return false
+}
+
+// detects if rule allows active SSH peer's IP
+func ruleMatchesPeer(peer net.IP, rule Rule, lists map[string]AddressList) bool {
+	// if no src IP contraint
+	if len(rule.SrcIPs) == 0 && rule.SrcList == "" {
+		return true
+	}
+	// check provided src_ips
+	if ipsContainPeer(peer, []string(rule.SrcIPs)) {
+		return true
+	}
+	// and src_list, if passed
+	if rule.SrcList != "" {
+		if list, ok := lists[rule.SrcList]; ok {
+			if ipsContainPeer(peer, list.Entries) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// checks if any CIDR or bare IP in entries contains peer IP
+func ipsContainPeer(peer net.IP, entries []string) bool {
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if _, cidr, err := net.ParseCIDR(entry); err == nil {
+			if cidr.Contains(peer) {
+				return true
+			}
+			continue
+		}
+		if ip := net.ParseIP(entry); ip != nil && ip.Equal(peer) {
+			return true
+		}
+	}
+	return false
 }
 
 // check ss for active SSH sessions
