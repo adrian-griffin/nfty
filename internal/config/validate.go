@@ -6,16 +6,33 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/adrian-griffin/nfty/internal/tools"
 )
 
 // validates content, ips, chains, options, etc. of supplied configfile
 func validateConfig(cfg *Config) error {
 
-	// define valid protocol options
+	// valid protocol options
 	validProtos := map[string]bool{"tcp": true, "udp": true, "icmp": true, "icmpv6": true}
 
-	// define valid action options
+	// valid action options
 	validActions := map[string]bool{"accept": true, "drop": true, "masquerade": true}
+
+	// valid log levels
+	validLevels := map[string]bool{
+		"emerg": true, "alert": true, "crit": true, "err": true,
+		"warn": true, "warning": true, "notice": true,
+		"info": true, "debug": true,
+	}
+
+	// valid connection state options
+	validStates := map[string]bool{
+		"new": true, "established": true, "related": true, "invalid": true, "untracked": true,
+	}
+
+	// valid burst syntax
+	burstPattern := regexp.MustCompile(`^\d+ packets$`)
 
 	// apply safe defaults if unset policy values
 	setPolicyDefaults(&cfg.Chains.Policy)
@@ -38,9 +55,6 @@ func validateConfig(cfg *Config) error {
 
 	if cfg.Core.Table == "" {
 		return fmt.Errorf("core.table is required")
-	}
-	if err := validateNFTString(cfg.Core.Table, "core.table"); err != nil {
-		return err
 	}
 
 	if cfg.Core.DefaultRules && cfg.Core.ICMPLimit == "" {
@@ -72,7 +86,7 @@ func validateConfig(cfg *Config) error {
 			}
 		}
 		for _, entry := range list.Entries {
-			if err := validateCIDR(entry); err != nil {
+			if err := tools.ValidateFamilyCIDR(entry, "ipv4"); err != nil {
 				return fmt.Errorf("lists.ipv4.%s: invalid entry %q: %w", name, entry, err)
 			}
 		}
@@ -114,7 +128,7 @@ func validateConfig(cfg *Config) error {
 			}
 		}
 		for _, entry := range list.Entries {
-			if err := validateCIDR(entry); err != nil {
+			if err := tools.ValidateFamilyCIDR(entry, "ipv6"); err != nil {
 				return fmt.Errorf("lists.ipv6.%s: invalid entry %q: %w", name, entry, err)
 			}
 		}
@@ -142,11 +156,6 @@ func validateConfig(cfg *Config) error {
 				return err
 			}
 			if rule.Log.Level != "" {
-				validLevels := map[string]bool{
-					"emerg": true, "alert": true, "crit": true, "err": true,
-					"warn": true, "warning": true, "notice": true,
-					"info": true, "debug": true,
-				}
 				if !validLevels[rule.Log.Level] {
 					return fmt.Errorf("rule %q: invalid log level %q",
 						rule.Comment, rule.Log.Level)
@@ -175,7 +184,6 @@ func validateConfig(cfg *Config) error {
 
 			// sanitize burst syntax
 			if rule.RateLimit.Burst != "" {
-				burstPattern := regexp.MustCompile(`^\d+ packets$`)
 				if !burstPattern.MatchString(rule.RateLimit.Burst) {
 					return fmt.Errorf("rule %q: rate_limit.burst must be \"N packets\", got %q",
 						rule.Comment, rule.RateLimit.Burst)
@@ -195,10 +203,6 @@ func validateConfig(cfg *Config) error {
 			}
 		}
 
-		// connection state validation
-		validStates := map[string]bool{
-			"new": true, "established": true, "related": true, "invalid": true, "untracked": true,
-		}
 		for _, state := range rule.CtState {
 			if !validStates[strings.ToLower(state)] {
 				return fmt.Errorf("rule %q: invalid ct_state %q", rule.Comment, state)
@@ -225,15 +229,6 @@ func validateConfig(cfg *Config) error {
 
 		// prevent empty dst_list
 		if rule.DstList != "" {
-			if list, ok := cfg.Lists.IPv4[rule.DstList]; ok && len(list.Entries) == 0 {
-				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.DstList)
-			}
-			if list, ok := cfg.Lists.IPv6[rule.DstList]; ok && len(list.Entries) == 0 {
-				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.DstList)
-			}
-		}
-
-		if rule.DstList != "" {
 			var lists map[string]AddressList
 			if rule.Family == "ipv4" {
 				lists = cfg.Lists.IPv4
@@ -245,25 +240,16 @@ func validateConfig(cfg *Config) error {
 			}
 		}
 
-		// validate dst_list references only existing lists
-		if rule.DstList != "" {
-			if _, ok := cfg.Lists.IPv4[rule.DstList]; !ok {
-				if _, ok := cfg.Lists.IPv6[rule.DstList]; !ok {
-					return fmt.Errorf("rule: %q references non-existent address list %q", rule.Comment, rule.DstList)
-				}
-			}
-		}
-
 		// validate src_ips are valid cidr formatting
 		for _, ip := range rule.SrcIPs {
-			if err := validateCIDR(ip); err != nil {
+			if err := tools.ValidateCIDR(ip); err != nil {
 				return fmt.Errorf("rule %q: invalid src_ips entry %q: %w", rule.Comment, ip, err)
 			}
 		}
 
 		// validate dst_ips are valid cidr formatting
 		for _, ip := range rule.DstIPs {
-			if err := validateCIDR(ip); err != nil {
+			if err := tools.ValidateCIDR(ip); err != nil {
 				return fmt.Errorf("rule %q: invalid dst_ips entry %q: %w", rule.Comment, ip, err)
 			}
 		}
@@ -373,7 +359,7 @@ func validateConfig(cfg *Config) error {
 	}
 
 	// validate src_list references only existing lists
-	for _, rule := range collectRulesMeta(cfg) {
+	for _, rule := range allRules {
 		var lists map[string]AddressList
 		if rule.Family == "ipv4" {
 			lists = cfg.Lists.IPv4

@@ -228,4 +228,5 @@ func RunApply(args []string) {
 			colour.Grey("·  "+colour.Cyan("nfty status")+" for more info"),
 		)
 	}
+	os.Exit(0)
 }

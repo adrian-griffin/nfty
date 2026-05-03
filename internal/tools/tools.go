@@ -156,3 +156,34 @@ func HasGlobalIPv6() bool {
 	}
 	return false
 }
+
+// validate cidr, ip family concious
+func ValidateFamilyCIDR(entry, family string) error {
+	if err := ValidateCIDR(entry); err != nil {
+		return err
+	}
+	ip := net.ParseIP(strings.SplitN(entry, "/", 2)[0])
+	if ip == nil {
+		return nil
+	}
+	if family == "ipv4" && ip.To4() == nil {
+		return fmt.Errorf("IPv6 address %q in IPv4 list", entry)
+	}
+	if family == "ipv6" && ip.To4() != nil {
+		return fmt.Errorf("IPv4 address %q in IPv6 list", entry)
+	}
+	return nil
+}
+
+// validate whether passed IP string is valid cidr or single-ip notation (ip4, ip6)
+func ValidateCIDR(s string) error {
+	// try as CIDR first
+	if _, _, err := net.ParseCIDR(s); err == nil {
+		return nil
+	}
+	// try as plain IP
+	if net.ParseIP(s) != nil {
+		return nil
+	}
+	return fmt.Errorf("not a valid IP or CIDR: %q", s)
+}

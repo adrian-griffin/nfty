@@ -4,7 +4,6 @@ package config
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -342,38 +341,6 @@ func setPolicyDefaults(policy *ChainPolicy) {
 	if policy.Postrouting == "" {
 		policy.Postrouting = "accept"
 	}
-}
-
-// validate whether passed IP string is valid cidr or single-ip notation (ip4, ip6)
-func validateCIDR(s string) error {
-	// try as CIDR first
-	if _, _, err := net.ParseCIDR(s); err == nil {
-		return nil
-	}
-	// try as plain IP
-	if net.ParseIP(s) != nil {
-		return nil
-	}
-	return fmt.Errorf("not a valid IP or CIDR: %q", s)
-}
-
-// LEGACY:
-// flattens all chains' rules to a single slice for validation passes
-func collectAllRules(cfg *Config) []Rule {
-	var rules []Rule
-	for _, chain := range [][]Rule{
-		cfg.Chains.IPv4.Input,
-		cfg.Chains.IPv4.Forward,
-		cfg.Chains.IPv4.Output,
-		cfg.Chains.IPv4.Postrouting,
-		cfg.Chains.IPv6.Input,
-		cfg.Chains.IPv6.Forward,
-		cfg.Chains.IPv6.Output,
-		cfg.Chains.IPv6.Postrouting,
-	} {
-		rules = append(rules, chain...)
-	}
-	return rules
 }
 
 // flattens all chains' rules to a single slice for validation passes

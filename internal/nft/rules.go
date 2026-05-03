@@ -9,9 +9,9 @@ import (
 	"net"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 
+	"github.com/adrian-griffin/nfty/internal/colour"
 	"github.com/adrian-griffin/nfty/internal/config"
 )
 
@@ -240,17 +240,10 @@ func buildSSHLogRules() []string {
 // sorts PortVlaue slice
 // for diff purposes
 func sortPorts(ports []config.PortValue) []config.PortValue {
-	// claude knows whats up here but this is too abstract
-	// for my weak human meat brain
 	sorted := make([]config.PortValue, len(ports))
 	copy(sorted, ports)
 	sort.Slice(sorted, func(i, j int) bool {
-		// extract the first number from each port (handles ranges like "161-162")
-		iStr := strings.SplitN(sorted[i].String(), "-", 2)[0]
-		jStr := strings.SplitN(sorted[j].String(), "-", 2)[0]
-		iNum, _ := strconv.Atoi(iStr)
-		jNum, _ := strconv.Atoi(jStr)
-		return iNum < jNum
+		return sorted[i].Start < sorted[j].Start
 	})
 	return sorted
 }
@@ -420,7 +413,7 @@ func buildChainRules(userRules []config.Rule, family string,
 			}
 			lines = append(lines, ruleLine...)
 		} else {
-			fmt.Fprintf(os.Stderr, "  skipping disabled rule: %q\n", rule.Comment)
+			fmt.Fprintf(os.Stderr, colour.DarkGreyf("\n  skipping disabled rule: %q\n", rule.Comment))
 		}
 
 	}

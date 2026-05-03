@@ -1,4 +1,5 @@
-// handles interaction with the nftables using json -j for structure
+// nft.go
+// builds rules to be passed to nftables
 package nft
 
 import (
@@ -7,14 +8,19 @@ import (
 	"strings"
 )
 
+var nftPath string
+
+func init() {
+	// best-effort for caching, CheckBinary will catch if missing
+	nftPath, _ = exec.LookPath("nft")
+}
+
 // calls nft binary with trailing args, returns stdout+stderr
 func nftCall(args ...string) ([]byte, error) {
-	path, err := exec.LookPath("nft")
-	if err != nil {
-		return nil, fmt.Errorf("nft not found - is nftables installed?")
+	if nftPath == "" {
+		return nil, fmt.Errorf("nft not found, please ensure is nftables installed")
 	}
-
-	cmd := exec.Command(path, args...)
+	cmd := exec.Command(nftPath, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("nft %s: %w\noutput: %s", strings.Join(args, " "), err, string(out))
@@ -55,12 +61,11 @@ func ListRulesetScript() ([]byte, error) {
 
 // check nft config for syntax or errors
 func ValidateScript(script string) error {
-	path, err := exec.LookPath("nft")
-	if err != nil {
-		return fmt.Errorf("nft binary not found in PATH")
+	if nftPath == "" {
+		return fmt.Errorf("nft not found - is nftables installed?")
 	}
 
-	cmd := exec.Command(path, "--check", "-f", "-")
+	cmd := exec.Command(nftPath, "--check", "-f", "-")
 	cmd.Stdin = strings.NewReader(script)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -71,12 +76,10 @@ func ValidateScript(script string) error {
 
 // hard-applies ruleset to NFT
 func ApplyScript(script string) error {
-	path, err := exec.LookPath("nft")
-	if err != nil {
-		return fmt.Errorf("nft binary not found in PATH")
+	if nftPath == "" {
+		return fmt.Errorf("nft not found - is nftables installed?")
 	}
-
-	cmd := exec.Command(path, "-f", "-")
+	cmd := exec.Command(nftPath, "-f", "-")
 	cmd.Stdin = strings.NewReader(script)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

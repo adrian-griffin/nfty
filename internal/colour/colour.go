@@ -51,8 +51,9 @@ func DarkGrey(s string) string { return wrap(fgDarkGrey, s) }
 func Grey(s string) string     { return wrap(fgGrey, s) }
 
 // strf formatters
-func Boldf(format string, a ...any) string   { return Bold(fmt.Sprintf(format, a...)) }
-func Greenf(format string, a ...any) string  { return Green(fmt.Sprintf(format, a...)) }
-func Yellowf(format string, a ...any) string { return Yellow(fmt.Sprintf(format, a...)) }
-func Greyf(format string, a ...any) string   { return Grey(fmt.Sprintf(format, a...)) }
-func Redf(format string, a ...any) string    { return Red(fmt.Sprintf(format, a...)) }
+func Boldf(format string, a ...any) string     { return Bold(fmt.Sprintf(format, a...)) }
+func Greenf(format string, a ...any) string    { return Green(fmt.Sprintf(format, a...)) }
+func Yellowf(format string, a ...any) string   { return Yellow(fmt.Sprintf(format, a...)) }
+func Greyf(format string, a ...any) string     { return Grey(fmt.Sprintf(format, a...)) }
+func Redf(format string, a ...any) string      { return Red(fmt.Sprintf(format, a...)) }
+func DarkGreyf(format string, a ...any) string { return DarkGrey(fmt.Sprintf(format, a...)) }

@@ -1,3 +1,5 @@
+// main.go
+// nfty
 package main
 
 import (
@@ -62,7 +64,6 @@ func main() {
 		nft.RunDiff(os.Args[2:])
 	case "check":
 		core.RunCheck(os.Args[2:])
-		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		printUsage()

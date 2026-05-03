@@ -65,7 +65,7 @@ func RunCheck(args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("  %s\n", colour.Green("✓ config validation success"))
+	fmt.Printf("  %s\n", colour.Green("✓ config syntax OK"))
 
 	fmt.Printf("    %s%s\n", tools.Label("name"), cfg.Core.Name)
 	fmt.Printf("    %s%s\n", tools.Label("table"), cfg.Core.Table)
@@ -113,5 +113,10 @@ func RunCheck(args []string) {
 		fmt.Println("--- generated nftables script ---")
 		fmt.Println()
 		fmt.Print(script)
+	}
+
+	// issue with check, exit(1)
+	if errCount > 0 {
+		os.Exit(1)
 	}
 }
