@@ -27,30 +27,34 @@ func (s Severity) String() string {
 	return "WARNING"
 }
 
+type familyInput struct {
+	name  string
+	input []Rule
+}
+
+type SSHSession struct {
+	PeerIP   net.IP
+	PeerAddr string // raw address as reported by ss, for display
+}
+
 type Issue struct {
 	Severity Severity
 	Category string
-	RuleRef  string // comment, peer addy, etc.
+	RuleRef  string
 	Message  string
 	Hint     string
 }
 
 // run static config checks
 // return issues for check/apply handling
-func RunStaticChecks(cfg *Config) []Issue {
+func RunSafetyChecks(cfg *Config) []Issue {
 	var issues []Issue
 	issues = append(issues, checkSrcRestrictions(cfg)...)
 	issues = append(issues, checkChainPolicies(cfg)...)
 	issues = append(issues, CheckDefaultRules(cfg)...)
 	issues = append(issues, CheckSSHRule(cfg)...)
-
-	return issues
-}
-
-// run dynamic/system-interactive checks
-func RunDynamicChecks(cfg *Config) []Issue {
-	var issues []Issue
 	issues = append(issues, CheckSSHLockout(cfg)...)
+
 	return issues
 }
 
@@ -149,17 +153,7 @@ func checkChainPolicies(cfg *Config) []Issue {
 
 func CheckSSHRule(cfg *Config) []Issue {
 	var issues []Issue
-
-	families := []struct {
-		name  string
-		input []Rule
-	}{
-		{"ipv4", cfg.Chains.IPv4.Input},
-		{"ipv6", cfg.Chains.IPv6.Input},
-	}
-
-	// for both v4 & v6
-	for _, fam := range families {
+	for _, fam := range activeFamilies(cfg) {
 		hasSSH := false
 		for _, rule := range fam.input {
 			if rule.Disabled {
@@ -189,25 +183,14 @@ func CheckSSHRule(cfg *Config) []Issue {
 // validate default/critical rules exist that are covered by default_rules
 func CheckDefaultRules(cfg *Config) []Issue {
 	var issues []Issue
-
 	if cfg.Core.DefaultRules {
 		return nil
 	}
-
-	// check for critical input rules
-	families := []struct {
-		name  string
-		input []Rule
-	}{
-		{"ipv4", cfg.Chains.IPv4.Input},
-		{"ipv6", cfg.Chains.IPv6.Input},
-	}
-
-	// for both v4 & v6
-	for _, fam := range families {
+	for _, fam := range activeFamilies(cfg) {
 		hasLoopback := false
 		hasEstablished := false
 		hasDHCPv4 := false
+		hasICMPv6 := false
 
 		for _, rule := range fam.input {
 			if rule.Disabled {
@@ -237,10 +220,15 @@ func CheckDefaultRules(cfg *Config) []Issue {
 				}
 			}
 
-			// check for dhcpv4
-			if fam.name == "ipv4" {
+			// family-specific address assignment checks
+			switch fam.name {
+			case "ipv4":
 				if portCovers(rule.DPort, 68) && protoIncludes(rule.Protocol, "udp") && rule.Action == "accept" {
 					hasDHCPv4 = true
+				}
+			case "ipv6":
+				if protoIncludes(rule.Protocol, "icmpv6") && rule.Action == "accept" {
+					hasICMPv6 = true
 				}
 			}
 
@@ -266,22 +254,39 @@ func CheckDefaultRules(cfg *Config) []Issue {
 			})
 		}
 
-		if !hasDHCPv4 {
+		if fam.name == "ipv4" && !hasDHCPv4 {
 			issues = append(issues, Issue{
 				Severity: SeverityError,
-				Category: "no-dhcp-input",
-				RuleRef:  fmt.Sprintf("%s.input.dhcp", fam.name),
-				Message:  "default_rules is disabled and no dhcp input accept rule found",
+				Category: "no-dhcpv4-input",
+				RuleRef:  "ipv4.input.dhcp",
+				Message:  "default_rules is disabled and no ipv4 dhcp input accept rule found",
 				Hint:     "If your machine uses DHCP for IP assignment, it will lose its IP after the lease expires!",
+			})
+		}
+
+		if fam.name == "ipv6" && !hasICMPv6 {
+			issues = append(issues, Issue{
+				Severity: SeverityWarn,
+				Category: "no-icmpv6-input",
+				RuleRef:  "ipv6.input.icmpv6",
+				Message:  "default_rules is disabled and no icmpv6 input accept rule found",
+				Hint:     "NDP and SLAAC require ICMPv6. Without it, you IPv6 address assignment may break",
 			})
 		}
 	}
 	return issues
 }
 
-type SSHSession struct {
-	PeerIP   net.IP // ssh session ip
-	PeerAddr string // raw address as reported by ss, for display
+// returns families of active IPs on machine
+func activeFamilies(cfg *Config) []familyInput {
+	fams := []familyInput{
+		{"ipv4", cfg.Chains.IPv4.Input},
+	}
+	// globally-routed ip6 on device then return ipv6
+	if tools.HasGlobalIPv6() {
+		fams = append(fams, familyInput{"ipv6", cfg.Chains.IPv6.Input})
+	}
+	return fams
 }
 
 // validates that every currently-connected ssh session is explicitly allowed

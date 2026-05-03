@@ -335,11 +335,6 @@ func validateConfig(cfg *Config) error {
 
 	}
 
-	// SAFETY
-	// validate rule logic and safety
-	RunStaticChecks(cfg)
-	CheckDefaultRules(cfg)
-
 	// validate no dupes on comments
 	ruleSeen := map[string]bool{}
 	for _, rule := range allRules {

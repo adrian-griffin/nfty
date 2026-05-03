@@ -81,8 +81,7 @@ func RunApply(args []string) {
 	}
 
 	// run safety checks w/ pre-apply prompt
-	issues := config.RunStaticChecks(cfg)
-	issues = append(issues, config.RunDynamicChecks(cfg)...)
+	issues := config.RunSafetyChecks(cfg)
 	errCount := config.PrintIssues(issues)
 
 	if errCount > 0 {

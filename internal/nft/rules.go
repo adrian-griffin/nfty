@@ -285,7 +285,6 @@ func formatAddrMatch(addrs []string, family, direction string) string {
 	normalized := normalizeAddrs(addrs)
 
 	if len(normalized) == 1 {
-		// single address — bare, no braces (matches nft canonical output)
 		return fmt.Sprintf("%s %s %s", prefix, direction, normalized[0])
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/adrian-griffin/nfty/internal/colour"
 	"github.com/adrian-griffin/nfty/internal/commit"
 	"github.com/adrian-griffin/nfty/internal/core"
 	"github.com/adrian-griffin/nfty/internal/meta"
@@ -17,7 +18,7 @@ func main() {
 		switch os.Args[1] {
 		case "version":
 			fmt.Printf("nfty  ~  version: %s\n", meta.Version)
-			fmt.Printf("  %s\n", meta.MOTD)
+			fmt.Printf(" %s\n", colour.DarkGrey(meta.MOTD))
 			os.Exit(0)
 		}
 	}

@@ -125,3 +125,34 @@ func StripIPPorts(addr string) net.IP {
 	}
 	return net.ParseIP(addr[:lastColon])
 }
+
+// detects if host has a globally routable ip6 address
+func HasGlobalIPv6() bool {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, iface := range ifaces {
+		// skip down and loopback interfaces
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		// pull ips
+		addys, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		// iterate, parse for v6 global-only
+		for _, addr := range addys {
+			ip, _, err := net.ParseCIDR(addr.String())
+			if err != nil {
+				continue
+			}
+			// not v4, not link-local (fe80::/10), not loopback (::1)
+			if ip.To4() == nil && !ip.IsLinkLocalUnicast() && !ip.IsLoopback() {
+				return true
+			}
+		}
+	}
+	return false
+}

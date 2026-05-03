@@ -94,8 +94,8 @@ func RunCheck(args []string) {
 
 	tools.Divider()
 
-	// run safety checks w/ pre-apply prompt
-	issues := config.RunStaticChecks(cfg)
+	// run safety checks
+	issues := config.RunSafetyChecks(cfg)
 	errCount := config.PrintIssues(issues)
 
 	if errCount > 0 {
