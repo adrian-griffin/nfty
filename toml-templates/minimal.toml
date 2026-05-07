@@ -1,49 +1,62 @@
-# nfty template - minimal, with sane defaults
-# good starting point for new nodes or if youre uncertain
+#  nfty - minimal template
+#  good starting point if you've got a minimal setup, or are unsure what you need
+#  as such, this template has more explanation and comments
+## locks down inbound, allows established/related, allows SSH from an IP source allowlist
 # -------------------------------------------------------------------
 
 [core]
   name          = "my-host-firewall"
-  description   = "Minimal, sane defaults"
+  description   = "minimal, sane defaults"
   table         = "nfty-minimal"
-  docker_compat = false
-  persist       = true
-  default_rules = true
+  docker_compat = false       # set true if running Docker containers
+  persist       = true        # write running.nft so ruleset survives reboot
+  default_rules = true        # auto-add basics (both ipv4 and ipv6), such as loopback, est/rel, dhcp, icmpv6
+  icmp_limit    = "10/s"      # required when default_rules = true, ddos prevention
+  log_ssh_fails = true        # log dropped 22/tcp ssh attempts, usually only reasonable on a local machine
 
-  icmpv4_limit  = "10/second"
-  icmpv6_limit  = "20/second"
-  log_ssh_fails = true
+# Chain policies - default actions for when no traffic matches no rule
+# Defaults are sane & included here for visibility, but can be ommitted from config
+[chains.policy]
+  input       = "drop"
+  forward     = "drop"
+  output      = "accept"
+  postrouting = "accept"
 
 # ---------------------------------------------------------------------------
-# IP Lists - Lists to group allowed IPs
+# IP Address Lists - reusable address sets that can be referenced in rules
 # ---------------------------------------------------------------------------
 
-# adjust the IPs and subnets in these lists for services you host, as needed
-
-[lists.ipv4.customlist]
-  comment = "Hosts allowed access to services"
+[lists.ipv4.trusted]
+  comment = "List of trusted host IPs or subnets"
   entries = [
     "10.100.1.0/24", # home subnet
     "172.16.1.0/24", # vpn subnet
   ]
 
 # ---------------------------------------------------------------------------
-# INPUT - Traffic destined for this device
+# INPUT - traffic destined for this device only
 # ---------------------------------------------------------------------------
 
+# From specific inline IPs
 [[chains.ipv4.input]]
-  comment  = "Allowed SSH hosts"
+  comment  = "Allow SSH Login"
   protocol = "tcp"
   dport    = [22]
-  src_ips = [
-    "10.100.1.5/32",  # desktop pc
+  src_ips  = [
+    "10.100.1.5/32",  # desktop
     "10.100.1.10/32", # laptop
   ]
   action   = "accept"
 
+# Reference a named IP address list
 [[chains.ipv4.input]]
-  comment  = "Web HTTP/HTTPS"
+  comment  = "Web HTTP/HTTPS Access"
   protocol = "tcp"
   dport    = [80, 443]
-  src_set  = "customlist"
+  src_list = "trusted" # reference address list
   action   = "accept"
+
+# ---------------------------------------------
+# All other traffic will be dropped by default!
+# (chains.policy.input = accept)
+# ---------------------------------------------

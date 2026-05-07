@@ -1,180 +1,135 @@
-# nfty template - public VPS, for internet-facing servers hosting web services
-# example includes caddy reverse proxy & web, wireguard headend, and SNMP monitoring
-#
-# of course, please excercise caution when dealing with public-facing servers
-# when in doubt, lock things down, and use the `minimal.toml` file
+# nfty - public VPS
+# basics for hosting a VPS or public server securely
+# example: reverse proxy + wireguard headend + SNMP over VPN
+## public hosts ALWAYS deserve extra caution, when in doubt, fall back to minimal.toml!
 # -------------------------------------------------------------------
 
 [core]
   name          = "my-public-host-firewall"
-  description   = "Public VPS - caddy reverse proxy + wireguard headend"
-  table         = "nfty-default"
-  docker_compat = true
+  description   = "Public VPS - caddy + wireguard + SNMP"
+  table         = "nfty-public"
+  docker_compat = false
   persist       = true
+  default_rules = true
+  icmp_limit    = "20/s"
+
+  # if you DONT block ssh at the VPS firewall/portal level, this might get a lot of hits
+  log_ssh_fails = true
+
+[chains.policy]
+  input       = "drop"   # if this is a public host, do NOT change this
+  forward     = "drop"   # keep disabled & manually whitelist below, unless you have good reason
+  output      = "accept"
+  postrouting = "accept"
 
 # ---------------------------------------------------------------------------
-# IP Lists
+# IP Lists - keep these limited on a public IP host
 # ---------------------------------------------------------------------------
 
 [lists.ipv4.ssh]
-  comment = "SSH Allowlist - keep this as tight as possible on a public VPS"
+  comment = "SSH - on a public node, keep this very tight"
   entries = [
-    "172.16.1.0/24", # vpn subnet
-    "100.10.1.1/32", # home ISP public IP
+    "172.16.1.0/24", # vpn subnet (preferred)
+    "100.10.1.1/32", # you home ISP public IP (fallback)
   ]
 
 [lists.ipv4.wg_peers]
-  comment = "WireGuard public IP allowlist"
+  comment = "WireGuard peer endpoints"
   entries = [
-    "100.10.1.1/32", # home ISP public IP
+    "100.10.1.1/32", # this could be your home public IP, for example
   ]
 
 [lists.ipv4.snmp]
-  comment = "SNMP monitoring allowlist"
+  comment = "SNMP monitoring (over VPN)"
   entries = [
-    "172.16.1.5/32", # NMS server VPN address
+    "172.16.1.5/32",
   ]
 
 [lists.ipv6.ssh]
   comment = "IPv6 SSH allowlist"
   entries = [
-    "2001:db8::/64", # home ISP IPv6 prefix
+    "2001:db8::/64",
   ]
 
 [lists.ipv6.wg_peers]
   comment = "IPv6 WireGuard peers"
   entries = [
-    "2001:db8::2/128", # home router ipv6
+    "2001:db8::2/128",
   ]
 
 # ---------------------------------------------------------------------------
-# INPUT - IPv4
+# IPv4 INPUT
 # ---------------------------------------------------------------------------
 
 [[chains.ipv4.input]]
-  comment = "Allow loopback"
-  iif     = "lo"
-  action  = "accept"
-
-[[chains.ipv4.input]]
-  comment    = "ICMP rate limit"
-  protocol   = "icmp"
-  rate_limit = { rate = "50/second", action = "accept" }
-  over_limit = "drop"
-
-[[chains.ipv4.input]]
-  ct_state = ["established", "related"]
+  comment  = "SSH"
+  protocol = "tcp"
+  dport    = [22]
+  src_list = "ssh"
   action   = "accept"
 
 [[chains.ipv4.input]]
-  ct_state = ["invalid"]
-  action   = "drop"
-
-[[chains.ipv4.input]]
-  comment  = "SSH - allowlist only"
-  protocol = "tcp"
-  dport    = [22]
-  src_set  = "ssh"
-  action   = "accept"
-
-[[chains.ipv4.input]]
-  comment  = "SSH - log and drop everything else"
-  protocol = "tcp"
-  dport    = [22]
-  log      = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
-  action   = "drop"
-
-[[chains.ipv4.input]]
-  comment  = "SNMP - monitoring host only"
+  comment  = "SNMP"
   protocol = "udp"
   dport    = [161]
-  src_set  = "snmp"
+  src_list = "snmp"
   action   = "accept"
 
+# open web/HTTP to ALL sources and IPs (public internet)
+# but rate-limit all NEW connections, as to limit DOS, SYN floods, bots, etc.
+# without impeding existing, established web connections
+#
+# useful for things like a reverse proxy or web server
+# if reverse proxying, please tighten your ACLs there as needed
 [[chains.ipv4.input]]
-  comment    = "HTTP/HTTPS new connections - rate limited"
-  iifname    = "eth0"
+  comment    = "HTTP/HTTPS - rate limite new"
+  iifname    = "eth0" # your public-facing interface
   protocol   = "tcp"
   dport      = [80, 443]
   ct_state   = ["new"]
   rate_limit = { rate = "20/second", burst = "50 packets", action = "accept" }
   over_limit = "drop"
 
+# wireguard will be open to ALL sources and IPs (public interet)
+# only valid WG peers will be able to do anything on this socket
+# feel free to limit NEW connection_states here as well
 [[chains.ipv4.input]]
-  comment    = "HTTP/HTTPS established - rate limited"
-  iifname    = "eth0"
-  protocol   = "tcp"
-  dport      = [80, 443]
-  rate_limit = { rate = "100/second", burst = "200 packets", action = "accept" }
-  over_limit = "drop"
-
-[[chains.ipv4.input]]
-  comment  = "WireGuard tunnel socket"
+  comment  = "WireGuard tunnel"
   protocol = "udp"
   dport    = [51820]
-  src_set  = "wg_peers"
+  src_list = "wg_peers"
   action   = "accept"
 
 # ---------------------------------------------------------------------------
-# INPUT - IPv6
+# IPv6 INPUT
 # ---------------------------------------------------------------------------
 
 [[chains.ipv6.input]]
-  comment = "Allow loopback"
-  iif     = "lo"
-  action  = "accept"
-
-[[chains.ipv6.input]]
-  comment    = "ICMPv6 rate limit - required for IPv6 to function"
-  protocol   = "icmpv6"
-  rate_limit = { rate = "100/second", action = "accept" }
-  over_limit = "drop"
-
-[[chains.ipv6.input]]
-  ct_state = ["established", "related"]
-  action   = "accept"
-
-[[chains.ipv6.input]]
-  ct_state = ["invalid"]
-  action   = "drop"
-
-[[chains.ipv6.input]]
-  comment  = "SSH IPv6 - allowlist only"
+  comment  = "SSH IPv6"
   protocol = "tcp"
   dport    = [22]
-  src_set  = "ssh"
+  src_list = "ssh"
   action   = "accept"
-
-[[chains.ipv6.input]]
-  comment  = "SSH IPv6 - log and drop everything else"
-  protocol = "tcp"
-  dport    = [22]
-  log      = { prefix = "NFTY DROP 22/TCP: ", level = "warn" }
-  action   = "drop"
 
 [[chains.ipv6.input]]
   comment  = "WireGuard IPv6"
   protocol = "udp"
   dport    = [51820]
-  src_set  = "wg_peers"
+  src_list = "wg_peers"
   action   = "accept"
 
 # ---------------------------------------------------------------------------
-# FORWARD - default drop, uncomment as needed
+# VPN exit-node mode (commented out by default)
+# Uncomment if this VPS routes WireGuard client traffic OUT to the internet.
 # ---------------------------------------------------------------------------
 
 # [[chains.ipv4.forward]]
-#   comment = "WireGuard client forwarding"
+#   comment = "WG clients to internet"
 #   iifname = "wg0"
 #   oifname = "eth0"
 #   action  = "accept"
-
-# ---------------------------------------------------------------------------
-# POSTROUTING - IPv4 NAT
-# ---------------------------------------------------------------------------
-
-# this is needed if you plan to use your VPS as an exit-node for any VPN setup
+#
 # [[chains.ipv4.postrouting]]
-#  comment = "Masquerade outbound on eth0"
-#  oifname = "eth0"
-#  action  = "masquerade"
+#   comment = "Masquerade WG traffic on eth0"
+#   oifname = "eth0"
+#   action  = "masquerade"

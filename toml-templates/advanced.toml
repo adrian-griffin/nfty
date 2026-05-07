@@ -1,0 +1,139 @@
+# nfty - advanced template & feature reference
+# every supported field is shown at least once. NOT a valid config.
+## keep what you need and discard the rest
+# -------------------------------------------------------------------
+
+[core]
+  name          = "advanced-example"
+  description   = "reference config showing all nfty feature"
+  table         = "nfty-advanced"
+  docker_compat = true
+  persist       = true
+  default_rules = true
+  icmp_limit    = "100/second"
+  log_ssh_fails = true
+
+[chains.policy]
+  input       = "drop"
+  forward     = "drop"
+  output      = "accept"
+  postrouting = "accept"
+
+# ---------------------------------------------------------------------------
+# Lists - both ipv4 and ipv6 can be defined
+# ---------------------------------------------------------------------------
+
+[lists.ipv4.admin]
+  comment = "admin allowlist"
+  entries = ["10.100.1.5/32", "172.16.1.0/24"]
+
+[lists.ipv4.lan]
+  comment = "LAN range"
+  entries = ["10.100.0.0/16"]
+
+# List to be used as dst_ips filtering. Same process as regular src_ips lists
+[lists.ipv4.blocked_dst]
+  comment = "Outbound destinations to block"
+  entries = ["192.0.2.0/24"]
+
+[lists.ipv6.ssh]
+  comment = "IPv6 SSH allowlist"
+  entries = [
+    "2001:db8::/64",
+  ]
+
+# ---------------------------------------------------------------------------
+# IPv4 INPUT - rate limiting, logging, ct_state, port ranges
+# ---------------------------------------------------------------------------
+
+# Port ranges, such as "1024-65535" are supported
+[[chains.ipv4.input]]
+  comment  = "Ephemeral TCP from LAN"
+  protocol = "tcp"
+  dport    = ["1024-65535"]
+  src_list = "lan"
+  action   = "accept"
+
+# TCP and UDP each, for two different ports
+[[chains.ipv4.input]]
+  comment  = "TCP + UDP + 2 ports example"
+  protocol = ["tcp","udp"]
+  dport    = [1000,1001]
+  src_ips  = ["192.168.0.0/24"]
+  action   = "drop"
+
+# sport (source port). Rare but needed sometimes. Useful for DNS replies, NTP, etc.
+[[chains.ipv4.input]]
+  comment  = "Allow NTP replies"
+  protocol = "udp"
+  sport    = [123]
+  action   = "accept"
+
+# Drop+log Note that log and rate_limit cannot coexist on the same rule
+# split them across two rules if you need both.
+[[chains.ipv4.input]]
+  comment  = "Log+drop unauthorized SSH"
+  protocol = "tcp"
+  dport    = [22]
+  log      = { prefix = "NFTY DROP SSH: ", level = "warn" }
+  action   = "drop"
+
+# Disabled rule
+# disable=true means the rule is skipped in all NFTables output
+[[chains.ipv4.input]]
+  comment  = "Plex (disabled)"
+  protocol = "tcp"
+  dport    = [32400]
+  src_list = "lan"
+  action   = "accept"
+  disable  = true
+
+# ipv4 http allows
+[[chains.ipv4.input]]
+  comment    = "HTTP/HTTPS - v4"
+  iifname    = "eth0"
+  protocol   = "tcp"
+  dport      = [80, 443]
+  ct_state   = ["new"]
+  rate_limit = { rate = "20/second", burst = "50 packets", action = "accept" }
+  over_limit = "drop"
+
+# ipv6 http allows
+[[chains.ipv6.input]]
+  comment    = "HTTP/HTTPS - v6"
+  iifname    = "eth0"
+  protocol   = "tcp"
+  dport      = [80, 443]
+  ct_state   = ["new"]
+  rate_limit = { rate = "20/second", burst = "50 packets", action = "accept" }
+  over_limit = "drop"
+
+
+# ---------------------------------------------------------------------------
+# IPv4 OUTPUT - rare but situational
+# ---------------------------------------------------------------------------
+
+[[chains.ipv4.output]]
+  comment  = "Block outbound to known-bad IPs"
+  dst_list = "blocked_dst"
+  action   = "drop"
+
+[[chains.ipv4.output]]
+  comment = "Block specific host"
+  dst_ips = ["198.51.100.7/32"]
+  action  = "drop"
+
+# ---------------------------------------------------------------------------
+# FORWARD + NAT - typical for router/gateway machines
+# ---------------------------------------------------------------------------
+
+[[chains.ipv4.forward]]
+  comment = "Allow LAN to WAN"
+  iifname = "br-lan"
+  oifname = "eth0"
+  action  = "accept"
+
+[[chains.ipv4.postrouting]]
+  comment = "NAT LAN out the WAN"
+  oifname = "eth0"
+  action  = "masquerade"

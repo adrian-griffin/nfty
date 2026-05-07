@@ -1,3 +1,6 @@
+// rollback.go
+// handles systemd daemon rollback timer
+
 package commit
 
 import (

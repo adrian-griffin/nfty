@@ -1,3 +1,5 @@
+// commit.go
+// handles base nft config commit to systems
 package commit
 
 import (
