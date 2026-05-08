@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.4.4] - 2026-May-7
+- improved port .toml parsing, allowing all str, int, port range, slice
+- port-list functionality, akin to address-lists
+
 ## [0.4.3] - 2026-May-3
 - ssh lockout detection and alerting, dynamic ruleset safety framework
 - ipv6-specific safety checks

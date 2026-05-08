@@ -77,6 +77,7 @@ type ProtoValue struct {
 	Protocols []string
 }
 type StringList []string
+type PortList []PortValue
 
 // returns final port-value object as string
 func (port PortValue) String() string {
@@ -91,13 +92,13 @@ func (port PortValue) IsSingle() bool {
 	return port.Start == port.End
 }
 
-// manual unmarshalling of ips to allow slices or str
+// manual unmarshalling for IP lists
 func (stringlist *StringList) UnmarshalTOML(data interface{}) error {
-	switch v := data.(type) {
+	switch dataType := data.(type) {
 	case string:
-		*stringlist = []string{v}
+		*stringlist = []string{dataType}
 	case []interface{}:
-		for _, item := range v {
+		for _, item := range dataType {
 			s, ok := item.(string)
 			if !ok {
 				return fmt.Errorf("list entries must be strings, got %T", item)
@@ -110,7 +111,7 @@ func (stringlist *StringList) UnmarshalTOML(data interface{}) error {
 	return nil
 }
 
-// manual unmarshalling to catch various port ranges & lists
+// manual unmarshalling for port ranges, arrays
 func (port *PortValue) UnmarshalTOML(data interface{}) error {
 	switch value := data.(type) {
 	case int64:
@@ -121,6 +122,21 @@ func (port *PortValue) UnmarshalTOML(data interface{}) error {
 		port.End = int(value)
 	case string:
 		parts := strings.SplitN(value, "-", 2)
+		if len(parts) == 1 {
+			// if single port string is passed, extract to int
+			p, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+			if err != nil {
+				return fmt.Errorf("invalid port number %q: %w", value, err)
+			}
+			if p < 1 || p > 65535 {
+				return fmt.Errorf("port %d out of valid range (1-65535)")
+			}
+
+			// for nftables valid parsing
+			port.Start = p
+			port.End = p
+			return nil
+		}
 		if len(parts) != 2 {
 			return fmt.Errorf("invalid port range %q, expected \"start-end\"", value)
 		}
@@ -147,7 +163,7 @@ func (port *PortValue) UnmarshalTOML(data interface{}) error {
 	return nil
 }
 
-// manual unmarshalling to map protocol array
+// manual unmarshalling for protocol value
 func (proto *ProtoValue) UnmarshalTOML(data interface{}) error {
 	switch value := data.(type) {
 	case string:
@@ -162,6 +178,38 @@ func (proto *ProtoValue) UnmarshalTOML(data interface{}) error {
 		}
 	default:
 		return fmt.Errorf("protocol must be a string or list of strings, got %T", data)
+	}
+	return nil
+}
+
+// manual unmarshalling for port value
+func (portlist *PortList) UnmarshalTOML(data interface{}) error {
+	switch dataType := data.(type) {
+	case int64:
+		// if int
+		var port PortValue
+		if err := port.UnmarshalTOML(dataType); err != nil {
+			return err
+		}
+		*portlist = []PortValue{port}
+	case string:
+		// portvalue, if str or str range
+		var port PortValue
+		if err := port.UnmarshalTOML(dataType); err != nil {
+			return err
+		}
+		*portlist = []PortValue{port}
+	case []interface{}:
+		// if slice
+		for _, item := range dataType {
+			var port PortValue
+			if err := port.UnmarshalTOML(item); err != nil {
+				return err
+			}
+			*portlist = append(*portlist, port)
+		}
+	default:
+		return fmt.Errorf("dport/sport must be an integer, range string, or an array, got %T", data)
 	}
 	return nil
 }
@@ -211,23 +259,23 @@ type metaRule struct {
 
 // defines single rule entry, maps directly to nftables design
 type Rule struct {
-	Comment   string      `toml:"comment"`    // name and description
-	IIF       string      `toml:"iif"`        // inbound interface (lo, etc.)
-	IIFName   string      `toml:"iifname"`    // inbound interface name match
-	OIFName   string      `toml:"oifname"`    // outbound interface name match
-	Protocol  ProtoValue  `toml:"protocol"`   // icmp, icmpv6, tcp, udp
-	DPort     []PortValue `toml:"dport"`      // destination port(s) or ranges
-	SrcList   string      `toml:"src_list"`   // reference to a named address set
-	SrcIPs    StringList  `toml:"src_ips"`    // inline source IPs/CIDRs (alternative to src_list)
-	CtState   StringList  `toml:"ct_state"`   // conntrack states
-	RateLimit *RateLimit  `toml:"rate_limit"` // rate limit packets
-	OverLimit string      `toml:"over_limit"` // action when rate exceeded: drop/log
-	Log       *LogConfig  `toml:"log"`        // log to kernel/nft logs
-	Action    string      `toml:"action"`     // accept, drop, masquerade
-	DstList   string      `toml:"dst_list"`   // destination address list
-	DstIPs    StringList  `toml:"dst_ips"`    // destination ip array
-	SPort     []PortValue `toml:"sport"`      // source port
-	Disabled  bool        `toml:"disable"`    // disable rule
+	Comment   string     `toml:"comment"`    // name and description
+	IIF       string     `toml:"iif"`        // inbound interface (lo, etc.)
+	IIFName   string     `toml:"iifname"`    // inbound interface name match
+	OIFName   string     `toml:"oifname"`    // outbound interface name match
+	Protocol  ProtoValue `toml:"protocol"`   // icmp, icmpv6, tcp, udp
+	DPort     PortList   `toml:"dport"`      // destination port(s) or ranges
+	SrcList   string     `toml:"src_list"`   // reference to a named address set
+	SrcIPs    StringList `toml:"src_ips"`    // inline source IPs/CIDRs (alternative to src_list)
+	CtState   StringList `toml:"ct_state"`   // conntrack states
+	RateLimit *RateLimit `toml:"rate_limit"` // rate limit packets
+	OverLimit string     `toml:"over_limit"` // action when rate exceeded: drop/log
+	Log       *LogConfig `toml:"log"`        // log to kernel/nft logs
+	Action    string     `toml:"action"`     // accept, drop, masquerade
+	DstList   string     `toml:"dst_list"`   // destination address list
+	DstIPs    StringList `toml:"dst_ips"`    // destination ip array
+	SPort     PortList   `toml:"sport"`      // source port
+	Disabled  bool       `toml:"disable"`    // disable rule
 }
 
 // define rate-limiter objects
