@@ -21,7 +21,7 @@ A simple network firewall manager for Linux that features diffs, user-friendly .
 
 Network security's important, and there's no reason you shouldn't have a hardened firewall on every server or VM in your homelab, even if firewalls aren't your strong suit.
 
-***Every time*** a ruleset is applied by nfty, automatic config rollback is put on a timer, stopped only when the user approves changes with a `nfty confirm` (30s default). If you accidentally lock yourself out or kill some service functionality, changes will revert upon timer expire or user-supplied `nfty rollback`.  
+***Every time*** a ruleset is applied by nfty, automatic config rollback is put on a timer, stopped only when the user approves changes with a `nfty confirm` (60s default). If you accidentally lock yourself out or kill some service functionality, changes will revert upon timer expire or user-supplied `nfty rollback`.  
 
 Built to function similarly to `commit confirmed`/`safe mode` on enterprise-grade network equipment, and to make changes & tinkering with firewalls more approachable and safer.  
 Additional details on how the rollback functionality works can be found here [Commit Confirm/Rollback](#commit-confirmrollback)
@@ -111,7 +111,6 @@ See [nfty/toml-templates](https://github.com/adrian-griffin/nfty/tree/main/toml-
   table         = "nfty-default"
 
   docker_compat = true
-  persist       = true
   default_rules = true
   icmp_limit  = "10/s"
   log_ssh_fails = true
@@ -152,7 +151,7 @@ nfty check <config.toml>              validate config and show summary
     --list-ruleset                      show generated nftables script
 nfty diff <config.toml>               diff proposed config against live ruleset
 nfty apply <config.toml>              apply config with commit-confirm safety
-    --commit-confirm <seconds>          set rollback timer (default: 30)
+    --commit-confirm <seconds>          set rollback timer (default: 60)
     --skip-confirm                      skip rollback timer (dangerous)
 nfty confirm                          confirm pending apply
 nfty rollback                         revert to previous ruleset snapshot
@@ -168,7 +167,7 @@ nfty stores state and metadata in `/var/nfty/`:
 | File | Purpose |
 |---|---|
 | `rollback.nft` | Pre-apply ruleset snapshot for emergency restoration |
-| `running.nft` | Last confirmed ruleset (for boot persistence) |
+| `running.nft` | Last confirmed ruleset |
 | `pending.json` | Metadata for in-flight applies awaiting confirmation |
 | `last-apply.json` | Metadata from the most recent confirmed apply |
 

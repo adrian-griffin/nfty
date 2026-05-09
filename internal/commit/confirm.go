@@ -1,3 +1,6 @@
+// confirm.go
+// confirm nfty changes and clear systemd unit
+
 package commit
 
 import (
@@ -28,7 +31,9 @@ func RunConfirm() {
 	}
 
 	// cancel systemd execution timer
-	CancelRollback()
+	if err := CancelRollback(); err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: could not cancel rollback timer: %v\n", err)
+	}
 
 	// persist current ruleset for boot restore
 	currentRuleset, err := nft.ListRulesetScript()

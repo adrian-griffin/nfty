@@ -1,3 +1,5 @@
+// diff.go
+// diffs proposed ruleset against running
 package nft
 
 import (
@@ -167,18 +169,18 @@ func RunDiff(args []string) {
 
 	// get current NFTables live ruleset
 	// nfty IP Tables only
-	ipTable, err := ListTable("ip", cfg.Core.Table)
+	ipTable, err := listTableOrEmpty("ip", cfg.Core.Table)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  could not read live table ip %s: %v\n", cfg.Core.Table, err)
 		os.Exit(1)
 	}
-	ip6Table, err := ListTable("ip6", cfg.Core.Table)
+	ip6Table, err := listTableOrEmpty("ip6", cfg.Core.Table)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  could not read live table ip6 %s: %v\n", cfg.Core.Table, err)
 		os.Exit(1)
 	}
 
-	current := string(ipTable) + "\n" + string(ip6Table)
+	current := ipTable + "\n" + ip6Table
 
 	fmt.Printf("  %s %s %s\n", colour.Grey("config:"), cfg.Core.Name, colour.DarkGrey(cfg.Core.Description))
 	fmt.Printf("  %s %s\n", colour.Grey("checksum:"), colour.DarkGrey(proposedChecksum))
@@ -221,4 +223,16 @@ func RunDiff(args []string) {
 
 	// colourize that ish
 	fmt.Print(colourizeDiff(diffOutput))
+}
+
+func listTableOrEmpty(family, name string) (string, error) {
+	out, err := ListTable(family, name)
+	if err != nil {
+		// nft reports missing tables as "No such file or directory"
+		if strings.Contains(err.Error(), "No such file or directory") {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(out), nil
 }

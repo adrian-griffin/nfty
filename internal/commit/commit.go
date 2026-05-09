@@ -198,8 +198,10 @@ func ScheduleRollback(seconds int, nftyBinary string) error {
 
 // stops the pending rollback timer
 func CancelRollback() error {
-	// stop both the timer and the service unit systemd creates
-	exec.Command("systemctl", "stop", TimerUnit+".timer").Run()
+	// stop both the timer and the service unit
+	if err := exec.Command("systemctl", "stop", TimerUnit+".timer").Run(); err != nil {
+		return fmt.Errorf("stopping rollback timer: %w", err)
+	}
 	exec.Command("systemctl", "stop", TimerUnit+".service").Run()
 	return nil
 }

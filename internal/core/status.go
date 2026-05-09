@@ -1,3 +1,5 @@
+// status.go
+// display nfty last apply status
 package core
 
 import (

@@ -190,12 +190,6 @@ func validateConfig(cfg *Config) error {
 				}
 			}
 
-			// validate rate-limit action passed
-			if !validActions[rule.RateLimit.Action] {
-				return fmt.Errorf("rule %q: rate_limit.action must be accept, drop, or masquerade, got %q",
-					rule.Comment, rule.RateLimit.Action)
-			}
-
 			// validate over_limit is drop or log if set
 			if rule.OverLimit != "" && rule.OverLimit != "drop" && rule.OverLimit != "log" {
 				return fmt.Errorf("rule %q: over_limit must be \"drop\" or \"log\", got %q",
@@ -212,32 +206,6 @@ func validateConfig(cfg *Config) error {
 		// ensure only iif OR iffname are used
 		if rule.IIF != "" && rule.IIFName != "" {
 			return fmt.Errorf("rule %q: cannot use both iif and iifname", rule.Comment)
-		}
-
-		// prevent empty src_list
-		if rule.SrcList != "" {
-			var lists map[string]AddressList
-			if rule.Family == "ipv4" {
-				lists = cfg.Lists.IPv4
-			} else {
-				lists = cfg.Lists.IPv6
-			}
-			if list, ok := lists[rule.SrcList]; ok && len(list.Entries) == 0 {
-				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.SrcList)
-			}
-		}
-
-		// prevent empty dst_list
-		if rule.DstList != "" {
-			var lists map[string]AddressList
-			if rule.Family == "ipv4" {
-				lists = cfg.Lists.IPv4
-			} else {
-				lists = cfg.Lists.IPv6
-			}
-			if list, ok := lists[rule.DstList]; ok && len(list.Entries) == 0 {
-				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.DstList)
-			}
 		}
 
 		// validate src_ips are valid cidr formatting
@@ -317,21 +285,27 @@ func validateConfig(cfg *Config) error {
 				rule.Comment, rule.Family, rule.Chain)
 		}
 
-		// ensure iifname is not used with output chan
+		// ensure iifname is not used with output or post chain
 		if rule.IIFName != "" && (rule.Chain == "output" || rule.Chain == "postrouting") {
 			return fmt.Errorf("rule %q: iifname has no effect on %s chain", rule.Comment, rule.Chain)
 		}
+
+		// ensure iif is not used with output or post chain
+		if rule.IIF != "" && (rule.Chain == "output" || rule.Chain == "postrouting") {
+			return fmt.Errorf("rule %q: iif has no effect on %s chain", rule.Comment, rule.Chain)
+		}
+
 		// ensure oifname is not used with input chain
 		if rule.OIFName != "" && rule.Chain == "input" {
 			return fmt.Errorf("rule %q: oifname has no effect on input chain", rule.Comment)
 		}
 
 		// max cap rule comment
-		if len("nfty: "+rule.Comment) > 64 {
+		if len("nfty: "+rule.Comment) > 110 {
 			return fmt.Errorf("rule %q: comment too long", rule.Comment)
 		}
 		// max cap log prefix
-		if rule.Log != nil && len(rule.Log.Prefix) > 64 {
+		if rule.Log != nil && len(rule.Log.Prefix) > 63 {
 			return fmt.Errorf("rule %q: log prefix too long", rule.Comment)
 		}
 
@@ -365,6 +339,32 @@ func validateConfig(cfg *Config) error {
 			lists = cfg.Lists.IPv4
 		} else {
 			lists = cfg.Lists.IPv6
+		}
+
+		// prevent empty src_list
+		if rule.SrcList != "" {
+			var lists map[string]AddressList
+			if rule.Family == "ipv4" {
+				lists = cfg.Lists.IPv4
+			} else {
+				lists = cfg.Lists.IPv6
+			}
+			if list, ok := lists[rule.SrcList]; ok && len(list.Entries) == 0 {
+				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.SrcList)
+			}
+		}
+
+		// prevent empty dst_list
+		if rule.DstList != "" {
+			var lists map[string]AddressList
+			if rule.Family == "ipv4" {
+				lists = cfg.Lists.IPv4
+			} else {
+				lists = cfg.Lists.IPv6
+			}
+			if list, ok := lists[rule.DstList]; ok && len(list.Entries) == 0 {
+				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.DstList)
+			}
 		}
 
 		if rule.SrcList != "" {

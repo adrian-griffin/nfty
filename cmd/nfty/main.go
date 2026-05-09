@@ -94,7 +94,7 @@ func printUsage() {
 	fmt.Println("      --list-ruleset                 list current NFT ruleset output")
 	fmt.Println("  diff <config.toml>               show changes against current ruleset")
 	fmt.Println("  apply <config.toml>              apply target config")
-	fmt.Println("      --commit-confirm <seconds>     set rollback timer (default: 30)")
+	fmt.Println("      --commit-confirm <seconds>     set rollback timer (default: 60)")
 	fmt.Println("      --skip-confirm                 skip rollback timer (dangerous)")
 	fmt.Println("  confirm                          confirm pending config")
 	fmt.Println("  rollback                         revert to previous rule snapshot")

@@ -1,3 +1,5 @@
+// colour.go
+// define ansi CLI colours
 package colour
 
 import (

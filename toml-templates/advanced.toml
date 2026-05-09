@@ -8,7 +8,6 @@
   description   = "reference config showing all nfty feature"
   table         = "nfty-advanced"
   docker_compat = true
-  persist       = true
   default_rules = true
   icmp_limit    = "100/second"
   log_ssh_fails = true
@@ -95,7 +94,8 @@
   protocol   = "tcp"
   dport      = [80, 443]
   ct_state   = ["new"]
-  rate_limit = { rate = "20/second", burst = "50 packets", action = "accept" }
+  rate_limit = { rate = "20/second", burst = "50 packets" }
+  action     = "accept"
   over_limit = "drop"
 
 # ipv6 http allows
@@ -105,7 +105,8 @@
   protocol   = "tcp"
   dport      = [80, 443]
   ct_state   = ["new"]
-  rate_limit = { rate = "20/second", burst = "50 packets", action = "accept" }
+  rate_limit = { rate = "20/second", burst = "50 packets" }
+  action     = "accept"
   over_limit = "drop"
 
 

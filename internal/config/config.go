@@ -24,7 +24,6 @@ type CoreConfig struct {
 	Description  string `toml:"description"`
 	Table        string `toml:"table"`
 	DockerCompat bool   `toml:"docker_compat"` // sets prio to 10
-	Persist      bool   `toml:"persist"`
 	DefaultRules bool   `toml:"default_rules"`
 	ICMPLimit    string `toml:"icmp_limit"`
 	LogSSHFails  bool   `toml:"log_ssh_fails"`
@@ -280,9 +279,8 @@ type Rule struct {
 
 // define rate-limiter objects
 type RateLimit struct {
-	Rate   string `toml:"rate"`   // e.g. "50/second"
-	Burst  string `toml:"burst"`  // e.g. "100 packets"
-	Action string `toml:"action"` // action when under limit
+	Rate  string `toml:"rate"`  // e.g. "50/second"
+	Burst string `toml:"burst"` // e.g. "100 packets"
 }
 
 // define optional logging

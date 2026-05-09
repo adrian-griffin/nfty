@@ -9,7 +9,6 @@
   description   = "Public VPS - caddy + wireguard + SNMP"
   table         = "nfty-public"
   docker_compat = false
-  persist       = true
   default_rules = true
   icmp_limit    = "20/s"
 
@@ -87,7 +86,8 @@
   protocol   = "tcp"
   dport      = [80, 443]
   ct_state   = ["new"]
-  rate_limit = { rate = "20/second", burst = "50 packets", action = "accept" }
+  rate_limit = { rate = "20/second", burst = "50 packets" }
+  action     = "accept"
   over_limit = "drop"
 
 # wireguard will be open to ALL sources and IPs (public interet)

@@ -57,7 +57,6 @@ func RunCheck(args []string) {
 	fmt.Printf("    %s%s\n", tools.Label("name"), cfg.Core.Name)
 	fmt.Printf("    %s%s\n", tools.Label("table"), cfg.Core.Table)
 	fmt.Printf("    %s%v\n", tools.Label("docker_compat"), cfg.Core.DockerCompat)
-	fmt.Printf("    %s%v\n", tools.Label("persist"), cfg.Core.Persist)
 	fmt.Printf("    %s%v\n", tools.Label("default_rules"), cfg.Core.DefaultRules)
 	fmt.Printf("    %s%v\n", tools.Label("log_ssh_fails"), cfg.Core.LogSSHFails)
 

@@ -1,3 +1,5 @@
+// counters.go
+// display
 package core
 
 import (
@@ -168,10 +170,28 @@ func RunCounters() {
 			currentFamily = familyChain
 		}
 
+		// if comment containts nft:d: then adjust colour dgrey
+		defaultBool := false
+		if strings.HasPrefix(c.Comment, "nfty:d: ") {
+			defaultBool = true
+		}
+
+		// prune nfty comment prefix for display
+		prunedComment := strings.TrimPrefix(c.Comment, "nfty:d: ")
+		prunedComment = strings.TrimPrefix(prunedComment, "nfty: ")
 		// pad prior to ansi colouring
-		padded := fmt.Sprintf("%-*s", commentWidth, tools.Truncate(c.Comment, commentWidth))
+		padded := fmt.Sprintf("%-*s", commentWidth, tools.Truncate(prunedComment, commentWidth))
+
+		// depending on default_rules or not, adjust colour
+		counterLineItem := ""
+		if defaultBool {
+			counterLineItem = colour.DarkGrey(padded)
+		} else {
+			counterLineItem = colour.Grey(padded)
+		}
+
 		fmt.Printf("    %s %12s %10s\n",
-			colour.Grey(padded),
+			counterLineItem,
 			FormatPackets(c.Packets),
 			FormatBytes(c.Bytes))
 	}

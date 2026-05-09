@@ -1,3 +1,5 @@
+// tools.go
+// nfty internal tooling
 package tools
 
 import (
@@ -102,8 +104,10 @@ func FileInfo(path string) string {
 		ageStr = fmt.Sprintf("%ds ago", int(age.Seconds()))
 	case age < time.Hour:
 		ageStr = fmt.Sprintf("%dm ago", int(age.Minutes()))
-	case age < 24*time.Hour:
+	case age < 48*time.Hour:
 		ageStr = fmt.Sprintf("%dh ago", int(age.Hours()))
+	case age > 48*time.Hour:
+		ageStr = fmt.Sprintf("%dd ago", int(age.Hours()/24))
 	default:
 		ageStr = fmt.Sprintf("%dh ago", int(age.Hours()))
 	}

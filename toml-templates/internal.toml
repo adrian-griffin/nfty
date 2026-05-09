@@ -8,7 +8,6 @@
   description   = "Internal node - pihole DNS & web UI + SNMP monitoring"
   table         = "nfty-default"
   docker_compat = false
-  persist       = true
   default_rules = true
   icmp_limit    = "10/s"
   log_ssh_fails = true  # any box running DNS should not be exposed to the public internet anyway!

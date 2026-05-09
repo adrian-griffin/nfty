@@ -23,7 +23,7 @@ func RunApply(args []string) {
 	flagSet := flag.NewFlagSet("apply", flag.ExitOnError)
 	// sub-option flags for apply set
 	skipConfirm := flagSet.Bool("skip-confirm", false, "skip automatic rollback (dangerous)")
-	confirmSeconds := flagSet.Int("commit-confirm", 30, "rollback timer in seconds (30s default)")
+	confirmSeconds := flagSet.Int("commit-confirm", 60, "rollback timer in seconds (60s default)")
 	flagSet.Parse(args)
 
 	// if supplied .toml is empty err & exit

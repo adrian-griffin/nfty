@@ -4,7 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.4.4] - 2026-May-7
+## [0.5.0] - 2026-May-9
+- global error handling improvements
+- RLIMIT attribute validation & syntax improvements
+- `.toml` validation tweaks
+- `nfty counters` output cleanup and improved colouring
+- fixed new/empty table `nfty diff` crash
+- improved default/user added NFTables rule comment structure
+- other minor cleanup & fixes
+
+## [0.4.4] - 2026-May-6
 - improved port .toml parsing, allowing all str, int, port range, slice
 - port-list functionality, akin to address-lists
 

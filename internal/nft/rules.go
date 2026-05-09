@@ -70,6 +70,7 @@ func formatPriority(chainType, hook string, priority int) string {
 		"filter:forward":  {"filter", 0},
 		"filter:output":   {"filter", 0},
 		"nat:postrouting": {"srcnat", 100},
+		"nat:output":      {"srcnat", 100},
 		"nat:prerouting":  {"dstnat", -100},
 	}
 
@@ -176,24 +177,24 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 
 	// loopback
 	lines = append(lines,
-		t2+"iif \"lo\" counter accept comment \"nfty: allow loopback\"")
+		t2+"iif \"lo\" counter accept comment \"nfty:d: allow loopback\"")
 
 	// icmpv6 133-136/NDP
 	if family == "ip6" {
 		lines = append(lines,
-			t2+"icmpv6 type { nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } counter accept comment \"nfty: allow NDP\"")
+			t2+"icmpv6 type { nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } counter accept comment \"nfty:d: allow NDP\"")
 	}
 
 	// dhcpv4 client allow
 	if family == "ip" {
 		lines = append(lines,
-			t2+"udp sport 67 udp dport 68 counter accept comment \"nfty: allow DHCPv4 client\"")
+			t2+"udp sport 67 udp dport 68 counter accept comment \"nfty:d: allow DHCPv4 client\"")
 	}
 
 	// dhcpv6 client allow
 	if family == "ip6" {
 		lines = append(lines,
-			t2+"ip6 saddr fe80::/10 udp sport 547 udp dport 546 counter accept comment \"nfty: allow DHCPv6 client\"")
+			t2+"ip6 saddr fe80::/10 udp sport 547 udp dport 546 counter accept comment \"nfty:d: allow DHCPv6 client\"")
 	}
 
 	// icmp and ratelimiting
@@ -203,20 +204,20 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 	// handle if user-passed icmp limit(s) are not empty
 	if icmpLimit != "" {
 		lines = append(lines,
-			fmt.Sprintf(t2+"meta l4proto %s limit rate %s counter accept comment \"nfty: %s rate limit\"",
+			fmt.Sprintf(t2+"meta l4proto %s limit rate %s counter accept comment \"nfty:d: %s rate limit\"",
 				icmpProto, icmpLimit, icmpProto))
 
 		lines = append(lines,
-			fmt.Sprintf(t2+"meta l4proto %s counter drop comment \"nfty: %s over limit\"",
+			fmt.Sprintf(t2+"meta l4proto %s counter drop comment \"nfty:d: %s over limit\"",
 				icmpProto, icmpProto))
 	}
 
 	// established, related input
 	lines = append(lines,
-		t2+"ct state established,related counter accept comment \"nfty: allow established\"")
+		t2+"ct state established,related counter accept comment \"nfty:d: allow established\"")
 	// drop invalids
 	lines = append(lines,
-		t2+"ct state invalid counter drop comment \"nfty: drop invalid\"")
+		t2+"ct state invalid counter drop comment \"nfty:d: drop invalid\"")
 
 	return lines
 }
@@ -224,16 +225,16 @@ func buildDefaultInputs(family string, core config.CoreConfig) []string {
 // build out default forward-chain rules
 func buildDefaultForwards() []string {
 	return []string{
-		t2 + "ct state established,related counter accept comment \"nfty: allow established\"",
-		t2 + "ct state invalid counter drop comment \"nfty: drop invalid\"",
+		t2 + "ct state established,related counter accept comment \"nfty:d: allow established\"",
+		t2 + "ct state invalid counter drop comment \"nfty:d: drop invalid\"",
 	}
 }
 
 // generates SSH log+drop ruleset
 func buildSSHLogRules() []string {
 	return []string{
-		t2 + "tcp dport 22 counter log prefix \"NFTY DROP 22/TCP: \" comment \"nfty: SSH log\"",
-		t2 + "tcp dport 22 counter drop comment \"nfty: SSH drop\"",
+		t2 + "tcp dport 22 counter log prefix \"NFTY DROP 22/TCP: \" comment \"nfty:d: SSH log\"",
+		t2 + "tcp dport 22 counter drop comment \"nfty:d: SSH drop\"",
 	}
 }
 
@@ -439,15 +440,19 @@ func buildRateLimitLines(matchParts []string, rule config.Rule) []string {
 	// copy match parts (don't modify the original slice) and append
 	// the rate limiter + action
 	underParts := append([]string{}, matchParts...)
-	underParts = append(underParts, limitStr, "counter", rule.RateLimit.Action)
+	underParts = append(underParts, limitStr, "counter", rule.Action)
 	if rule.Comment != "" {
 		underParts = append(underParts, fmt.Sprintf("comment \"%s\"", "nfty: "+rule.Comment))
 	}
 	lines = append(lines, t2+strings.Join(underParts, " "))
 
+	// custom over-limit comment
 	if rule.OverLimit != "" {
 		overParts := append([]string{}, matchParts...)
 		overParts = append(overParts, "counter", rule.OverLimit)
+		if rule.Comment != "" {
+			overParts = append(overParts, fmt.Sprintf("comment \"%s\"", "nfty: "+rule.Comment+" [over-limit]"))
+		}
 		lines = append(lines, t2+strings.Join(overParts, " "))
 	}
 
@@ -611,7 +616,7 @@ func buildRule(rule config.Rule, family string) ([]string, error) {
 		// rlimit rules need to be split (1 rule in nfty = 2 rules in nftables)
 		if rule.RateLimit != nil {
 			results = append(results, buildRateLimitLines(parts, rule)...)
-			continue // skip the normal action/comment logic below
+			continue
 		}
 
 		// legal log levels for nft

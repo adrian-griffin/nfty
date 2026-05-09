@@ -18,7 +18,7 @@ func init() {
 // calls nft binary with trailing args, returns stdout+stderr
 func nftCall(args ...string) ([]byte, error) {
 	if nftPath == "" {
-		return nil, fmt.Errorf("nft not found, please ensure is nftables installed")
+		return nil, fmt.Errorf("nft not found, please ensure nftables is installed")
 	}
 	cmd := exec.Command(nftPath, args...)
 	out, err := cmd.CombinedOutput()
@@ -28,9 +28,25 @@ func nftCall(args ...string) ([]byte, error) {
 	return out, nil
 }
 
+// calls nft but returns stdout only
+func nftOutput(args ...string) ([]byte, error) {
+	if nftPath == "" {
+		return nil, fmt.Errorf("nft not found, please ensure nftables is installed")
+	}
+	cmd := exec.Command(nftPath, args...)
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+			return nil, fmt.Errorf("nft %s: %w\nstderr: %s", strings.Join(args, " "), err, string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("nft %s: %w", strings.Join(args, " "), err)
+	}
+	return out, nil
+}
+
 // returns nft output for a single table by ip-family & name
 func ListTable(family, name string) ([]byte, error) {
-	return nftCall("list", "table", family, name)
+	return nftOutput("list", "table", family, name)
 }
 
 // validates binary
@@ -43,7 +59,7 @@ func CheckBinary() error {
 
 // returns current, raw nft json output
 func ListRulesetJson() ([]byte, error) {
-	out, err := nftCall("-j", "list", "ruleset")
+	out, err := nftOutput("-j", "list", "ruleset")
 	if err != nil {
 		return nil, fmt.Errorf("listing ruleset: %w", err)
 	}
@@ -52,7 +68,7 @@ func ListRulesetJson() ([]byte, error) {
 
 // collects ruleset script for simple rollback
 func ListRulesetScript() ([]byte, error) {
-	out, err := nftCall("list", "ruleset")
+	out, err := nftOutput("list", "ruleset")
 	if err != nil {
 		return nil, fmt.Errorf("listing ruleset script: %w", err)
 	}

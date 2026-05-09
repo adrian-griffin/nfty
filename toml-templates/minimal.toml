@@ -9,7 +9,6 @@
   description   = "minimal, sane defaults"
   table         = "nfty-minimal"
   docker_compat = false       # set true if running Docker containers
-  persist       = true        # write running.nft so ruleset survives reboot
   default_rules = true        # auto-add basics (both ipv4 and ipv6), such as loopback, est/rel, dhcp, icmpv6
   icmp_limit    = "10/s"      # required when default_rules = true, ddos prevention
   log_ssh_fails = true        # log dropped 22/tcp ssh attempts, usually only reasonable on a local machine
