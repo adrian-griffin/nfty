@@ -128,7 +128,7 @@ func (port *PortValue) UnmarshalTOML(data interface{}) error {
 				return fmt.Errorf("invalid port number %q: %w", value, err)
 			}
 			if p < 1 || p > 65535 {
-				return fmt.Errorf("port %d out of valid range (1-65535)")
+				return fmt.Errorf("port %d out of valid range (1-65535)", p)
 			}
 
 			// for nftables valid parsing

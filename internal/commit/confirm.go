@@ -22,8 +22,12 @@ func RunConfirm() {
 	// print header output
 	tools.CommandExecuteHeader("confirm")
 
+	// a failed load must not abort the run, cancelling the rollback timer is the
+	// whole point of confirm and it has to stay reachable with a bad pending.json
 	state, err := LoadPending()
-	if err == nil {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: could not load pending state: %v\n", err)
+	} else {
 		fmt.Printf("  %s%s\n", tools.Label("confirming"), colour.Blue(state.ConfigPath))
 		fmt.Printf("  %s%s %s\n", tools.Label("applied by"), colour.Grey(state.AppliedBy), colour.DarkGrey("("+state.AppliedAt.Format("15:04:05")+")"))
 		fmt.Printf("  %s%s\n", tools.Label("checksum"), colour.DarkGrey(state.Checksum))
@@ -52,7 +56,12 @@ func RunConfirm() {
 		}
 	}
 
-	ClearPending()
+	// rollback is already cancelled at this point, clear pending
+	if err := ClearPending(); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: could not clear pending state: %v\n", err)
+		os.Exit(1)
+	}
+
 	fmt.Printf("  %s\n", colour.Green("✓ ruleset applied and committed"))
 	fmt.Printf("  %s  %s\n",
 		colour.Grey("rollback timer cancelled"),

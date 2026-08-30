@@ -343,12 +343,6 @@ func validateConfig(cfg *Config) error {
 
 		// prevent empty src_list
 		if rule.SrcList != "" {
-			var lists map[string]AddressList
-			if rule.Family == "ipv4" {
-				lists = cfg.Lists.IPv4
-			} else {
-				lists = cfg.Lists.IPv6
-			}
 			if list, ok := lists[rule.SrcList]; ok && len(list.Entries) == 0 {
 				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.SrcList)
 			}
@@ -356,17 +350,10 @@ func validateConfig(cfg *Config) error {
 
 		// prevent empty dst_list
 		if rule.DstList != "" {
-			var lists map[string]AddressList
-			if rule.Family == "ipv4" {
-				lists = cfg.Lists.IPv4
-			} else {
-				lists = cfg.Lists.IPv6
-			}
 			if list, ok := lists[rule.DstList]; ok && len(list.Entries) == 0 {
 				return fmt.Errorf("rule %q: list %q exists but has no entries", rule.Comment, rule.DstList)
 			}
 		}
-
 		if rule.SrcList != "" {
 			if _, ok := lists[rule.SrcList]; !ok {
 				return fmt.Errorf("rule %q in %s chain references list %q which doesn't exist in %s lists",

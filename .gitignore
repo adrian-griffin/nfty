@@ -1,0 +1,6 @@
+/nfty
+/nfty.exe
+*.local.toml
+/testdata/local/
+/notes/
+*.log

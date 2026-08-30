@@ -62,6 +62,7 @@ func RunApply(args []string) {
 		os.Exit(1)
 	}
 
+	// collect first 8 chars of nft (not nfty) config hash for display
 	checksum := nft.ScriptChecksum(script)
 
 	// ensure /var/nfty/ exists
@@ -148,11 +149,13 @@ func RunApply(args []string) {
 				// save running.nft after application
 				currentRuleset, err := nft.ListRulesetScript()
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "failed to collect current ruleset: %v\n", err)
-				}
-
-				if err := SaveRunningRuleset(string(currentRuleset)); err != nil {
-					fmt.Fprintf(os.Stderr, "failed to save ruleset: %v\n", err)
+					// never write on a failed read, empty output would clobber the boot-restore ruleset
+					fmt.Fprintf(os.Stderr, "WARNING: failed to collect current running NFT ruleset: %v\n", err)
+				} else {
+					// write running nft output to persist file
+					if err := SaveRunningRuleset(string(currentRuleset)); err != nil {
+						fmt.Fprintf(os.Stderr, "WARNING: failed to save NFT ruleset to disk: %v\n", err)
+					}
 				}
 
 				if err := WriteLastApplyDirect(configPath, checksum); err != nil {

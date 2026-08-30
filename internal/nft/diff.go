@@ -225,10 +225,12 @@ func RunDiff(args []string) {
 	fmt.Print(colourizeDiff(diffOutput))
 }
 
+// returns nft table output OR nil for use in diffs
 func listTableOrEmpty(family, name string) (string, error) {
 	out, err := ListTable(family, name)
 	if err != nil {
 		// nft reports missing tables as "No such file or directory"
+		// TODO: investigate better method
 		if strings.Contains(err.Error(), "No such file or directory") {
 			return "", nil
 		}

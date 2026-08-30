@@ -396,9 +396,10 @@ func buildChainRules(userRules []config.Rule, family string,
 
 	// default rules first
 	if core.DefaultRules {
-		if chainName == "input" {
+		switch chainName {
+		case "input":
 			lines = append(lines, buildDefaultInputs(family, core)...)
-		} else if chainName == "forward" {
+		case "forward":
 			lines = append(lines, buildDefaultForwards()...)
 		}
 	}
@@ -414,7 +415,7 @@ func buildChainRules(userRules []config.Rule, family string,
 			}
 			lines = append(lines, ruleLine...)
 		} else {
-			fmt.Fprintf(os.Stderr, colour.DarkGreyf("\n  skipping disabled rule: %q\n", rule.Comment))
+			fmt.Fprint(os.Stderr, colour.DarkGreyf("\n  skipping disabled rule: %q\n", rule.Comment))
 		}
 
 	}
@@ -451,6 +452,7 @@ func buildRateLimitLines(matchParts []string, rule config.Rule) []string {
 		overParts := append([]string{}, matchParts...)
 		overParts = append(overParts, "counter", rule.OverLimit)
 		if rule.Comment != "" {
+			// special over-limit tag on comment for sanity's sake (not mine tho)
 			overParts = append(overParts, fmt.Sprintf("comment \"%s\"", "nfty: "+rule.Comment+" [over-limit]"))
 		}
 		lines = append(lines, t2+strings.Join(overParts, " "))

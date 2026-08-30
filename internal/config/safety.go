@@ -287,9 +287,10 @@ func CheckSSHLockout(cfg *Config) []tools.Issue {
 func peerAllowedSSH(peer net.IP, rules []Rule, lists map[string]AddressList) bool {
 	for _, rule := range rules {
 		// skip if disabled or non-ssh rule
-		if rule.Disabled || !ruleMatchesSSH(rule) {
+		if rule.Disabled || !ruleIsSSH(rule) {
 			continue
 		}
+		// if ssh rule does not match peer IP, continue
 		if !ruleMatchesPeer(peer, rule, lists) {
 			continue
 		}
@@ -304,7 +305,7 @@ func peerAllowedSSH(peer net.IP, rules []Rule, lists map[string]AddressList) boo
 }
 
 // detects if rule pertains to ssh 22/tcp
-func ruleMatchesSSH(rule Rule) bool {
+func ruleIsSSH(rule Rule) bool {
 	has22 := false
 	// iterate dport list
 	for _, p := range rule.DPort {

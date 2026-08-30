@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.5.1] - 2026-Aug-30
+- fixed port-range validation logic bug
+- rollback cancellation failure when missing/corrupt `pending.json` file fixed
+- safety guards to prevent failed read from clearing `running.nft`
+
 ## [0.5.0] - 2026-May-9
 - global error handling improvements
 - RLIMIT attribute validation & syntax improvements
