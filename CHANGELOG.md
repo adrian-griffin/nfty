@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - fixed port-range validation logic bug
 - rollback cancellation failure when missing/corrupt `pending.json` file fixed
 - safety guards to prevent failed read from clearing `running.nft`
+- fixed infinite prompt loop when stdin is non-interactive during `nfty apply`
+- hardened apply and rollback logic
+- `--skip-confirm` now requires interactive tty
+- stale systemd units cleared before scheduling, fixes second `apply` failing to arm its timer
+- `--commit-confirm` 20s minimum enforced, default raised 60s -> 120s
+- init unit tests for prompt handling and commit-confirm duration
+
 
 ## [0.5.0] - 2026-May-9
 - global error handling improvements

@@ -3,6 +3,8 @@
 package tools
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -10,6 +12,8 @@ import (
 	"time"
 
 	"github.com/adrian-griffin/nfty/internal/colour"
+
+	"golang.org/x/term"
 )
 
 // max length left-column for labels
@@ -49,6 +53,50 @@ func SortFlags(args []string) []string {
 		}
 	}
 	return append(flags, positional...)
+}
+
+// err for when stdin interaction is not available
+var ErrNoInput = errors.New("stdin is not interactive")
+
+// one shared stdin reader per process. bufio reads ahead in chunks, helping prevent
+// a second os.Stdin reader from eating input meant for next prompt
+var stdinReader = bufio.NewReader(os.Stdin)
+
+// checks if stdin line is an interactive tty
+func StdinIsTTY() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
+}
+
+// wrapper func for y/n prompting, keeps stdout clean for pipe usage
+func ConfirmYesNo(prompt string) (bool, error) {
+	return confirmYesNo(stdinReader, prompt)
+}
+
+// prompts y/n, returns err if stdin is terminated or non-interactive
+func confirmYesNo(in *bufio.Reader, prompt string) (bool, error) {
+	for {
+		fmt.Fprint(os.Stderr, prompt)
+
+		line, err := in.ReadString('\n')
+		// switch check is run prior to err check so that
+		// valid answer is returned, even if stdin is closed
+		// or run with echo -n y
+		switch strings.ToLower(strings.TrimSpace(line)) {
+		case "y", "yes":
+			return true, nil
+		case "n", "no":
+			return false, nil
+		}
+
+		// input terminated (EOF or reader error) without any usable answer
+		// return err rather than looping prompt retries indefinitely
+		if err != nil {
+			fmt.Fprintln(os.Stderr)
+			return false, ErrNoInput
+		}
+		// reprompt on incorrect input
+		fmt.Fprintln(os.Stderr, "  invalid input, please answer y or n")
+	}
 }
 
 // return grey for left-column labels

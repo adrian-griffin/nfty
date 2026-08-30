@@ -17,10 +17,16 @@ const (
 	PendingFile   = "/var/nfty/pending.json"
 	LastApplyFile = "/var/nfty/last-apply.json"
 	TimerUnit     = "nfty-commit-confirm"
+
+	// if rollback timer is set to a shorter duration than the nftables apply takes
+	// it can lead to an edge-case race condition/conflict
+	// nftables apply should take no more than ~1-2 seconds tops, but lowering is not advised
+	MinConfirmSeconds     = 20
+	DefaultConfirmSeconds = 120
 )
 
-// struct for 'in-flight' config application that has yet to be `nfty confirm`
-// ie: written to pending.json after `nfty apply`, removed after confirm or rollback.
+// struct for pending/staged config application that has yet to be confirmed
+// written to pending.json after a `nfty apply`, removed after confirm or rollback
 type PendingState struct {
 	ConfigPath string    `json:"config_path"`
 	AppliedBy  string    `json:"applied_by"`
@@ -181,9 +187,28 @@ func LoadLastApply() (*LastApply, error) {
 	return &record, nil
 }
 
+// clears lingering unit timers
+// systemd refuses --unit= if the name still exists
+// any unit left in a failed state can prevent creation of a new timer
+func resetTimerUnits() {
+	// best effort as reset-failed errs out if unit does not exist
+	// err is discarded since we actually do *want* this to err (or clear timer successfully)
+	exec.Command("systemctl", "reset-failed", TimerUnit+".timer", TimerUnit+".service").Run()
+}
+
 // create systemd timer for nfty rollback
 // if left to run for the full duration, runs `nfty rollback-if-pending`
 func ScheduleRollback(seconds int, nftyBinary string) error {
+	// reject if confirm timer is below minimum limit
+	// prevents race of apply and rollback
+	if seconds < MinConfirmSeconds {
+		return fmt.Errorf("commit-confirm window of %ds is below the %ds minimum",
+			seconds, MinConfirmSeconds)
+	}
+
+	// reset/wipe nfty unit timers
+	resetTimerUnits()
+	// create new unit timer
 	err := exec.Command("systemd-run",
 		"--on-active="+fmt.Sprintf("%ds", seconds),
 		"--unit="+TimerUnit,
@@ -199,9 +224,14 @@ func ScheduleRollback(seconds int, nftyBinary string) error {
 // stops the pending rollback timer
 func CancelRollback() error {
 	// stop both the timer and the service unit
-	if err := exec.Command("systemctl", "stop", TimerUnit+".timer").Run(); err != nil {
+	err := exec.Command("systemctl", "stop", TimerUnit+".timer").Run()
+	exec.Command("systemctl", "stop", TimerUnit+".service").Run()
+
+	// always clear units on the way out
+	resetTimerUnits()
+
+	if err != nil {
 		return fmt.Errorf("stopping rollback timer: %w", err)
 	}
-	exec.Command("systemctl", "stop", TimerUnit+".service").Run()
 	return nil
 }

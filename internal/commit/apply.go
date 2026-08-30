@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/adrian-griffin/nfty/internal/colour"
@@ -22,9 +21,19 @@ func RunApply(args []string) {
 	// define new flagset for apply sub-options
 	flagSet := flag.NewFlagSet("apply", flag.ExitOnError)
 	// sub-option flags for apply set
-	skipConfirm := flagSet.Bool("skip-confirm", false, "skip automatic rollback (dangerous)")
-	confirmSeconds := flagSet.Int("commit-confirm", 60, "rollback timer in seconds (60s default)")
+	skipConfirm := flagSet.Bool("skip-confirm", false, "skip automatic rollback (use with caution)")
+	confirmSeconds := flagSet.Int("commit-confirm", DefaultConfirmSeconds,
+		fmt.Sprintf("rollback timer in seconds (%ds default, %ds minimum)",
+			DefaultConfirmSeconds, MinConfirmSeconds))
 	flagSet.Parse(args)
+
+	// reject rollback timers less than MinConfirmSeconds
+	// ScheduleRollback enforces this as well, this check is purely for UX
+	if !*skipConfirm && *confirmSeconds < MinConfirmSeconds {
+		fmt.Fprintf(os.Stderr, "ERROR: --commit-confirm must be at least %ds, got %ds\n",
+			MinConfirmSeconds, *confirmSeconds)
+		os.Exit(1)
+	}
 
 	// if supplied .toml is empty err & exit
 	configPath := flagSet.Arg(0)
@@ -79,22 +88,16 @@ func RunApply(args []string) {
 		fmt.Fprintf(os.Stderr, "\n  %s\n",
 			colour.Yellow(fmt.Sprintf("%d safety error(s) detected in config", errCount)),
 		)
-
-		var confirm string
-		for {
-			fmt.Fprintf(os.Stderr, "  continue anyway? (y/n): ")
-			fmt.Scanln(&confirm)
-
-			switch strings.ToLower(confirm) {
-			case "y":
-			case "n":
-				fmt.Fprintf(os.Stderr, "  %s\n", colour.Yellow("⏹ apply cancelled"))
-				os.Exit(1)
-			default:
-				fmt.Fprintln(os.Stderr, "  invalid input, please try again")
-				continue
-			}
-			break
+		// prompt y/n to proceed
+		proceed, err := tools.ConfirmYesNo("  continue anyway? (y/n): ")
+		if err != nil {
+			// if non-interactive tty or reader err, reject changes
+			fmt.Fprintln(os.Stderr, "ERROR: safety errors require confirmation but stdin is not interactive")
+			os.Exit(1)
+		}
+		if !proceed {
+			fmt.Fprintf(os.Stderr, "  %s\n", colour.Yellow("⏹ apply cancelled"))
+			os.Exit(1)
 		}
 	}
 
@@ -119,6 +122,13 @@ func RunApply(args []string) {
 
 	// warn loudly if skip-confirm passed
 	if *skipConfirm {
+		// check if terminal is cli/tty and interactive
+		// if not, reject changes
+		if !tools.StdinIsTTY() {
+			fmt.Fprintln(os.Stderr, "ERROR: --skip-confirm requires an interactive terminal")
+			os.Exit(1)
+		}
+
 		fmt.Printf("  %s\n", colour.Red("⚠ WARNING: --skip-confirm is active"))
 
 		fmt.Printf("    %s %s\n",
@@ -128,49 +138,41 @@ func RunApply(args []string) {
 
 		tools.Divider()
 
-		var userConfirmSkip string
-		// poll for user confirmation on skip
-		for {
-			fmt.Printf("\n  proceed? (y/n): ")
+		// prompt for --skip-confirm proceed
+		proceed, err := tools.ConfirmYesNo("\n  proceed? (y/n): ")
+		// check again for interactive tty
+		// if prompt reader receives err or EOF, reject
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ERROR: --skip-confirm requires an interactive terminal")
+			os.Exit(1)
+		}
+		// if proceed cancelled, return and notify
+		if !proceed {
+			fmt.Printf("%s\n", colour.Yellow("  ⏹ application cancelled"))
+			return
+		}
 
-			// scan for input
-			fmt.Scanln(&userConfirmSkip)
+		// formally apply generated NFT config
+		if err := nft.ApplyScript(script); err != nil {
+			fmt.Fprintf(os.Stderr, "  apply failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("%s\n", colour.Green("  ✓ ruleset applied and committed"))
 
-			// switch to catch input choices
-			switch strings.ToLower(userConfirmSkip) {
-			case "y":
-				// formally apply generated NFT config
-				if err := nft.ApplyScript(script); err != nil {
-					fmt.Fprintf(os.Stderr, "  apply failed: %v\n", err)
-					os.Exit(1)
-				}
-				fmt.Printf("%s\n", colour.Green("  ✓ ruleset applied and committed"))
-
-				// save running.nft after application
-				currentRuleset, err := nft.ListRulesetScript()
-				if err != nil {
-					// never write on a failed read, empty output would clobber the boot-restore ruleset
-					fmt.Fprintf(os.Stderr, "WARNING: failed to collect current running NFT ruleset: %v\n", err)
-				} else {
-					// write running nft output to persist file
-					if err := SaveRunningRuleset(string(currentRuleset)); err != nil {
-						fmt.Fprintf(os.Stderr, "WARNING: failed to save NFT ruleset to disk: %v\n", err)
-					}
-				}
-
-				if err := WriteLastApplyDirect(configPath, checksum); err != nil {
-					fmt.Fprintf(os.Stderr, "WARNING: could not save last apply state: %v\n", err)
-				}
-
-			case "n":
-				fmt.Printf("%s\n", colour.Yellow("  ⏹ application cancelled"))
-				return
-
-			default:
-				fmt.Println("invalid input, please try again")
-				continue
+		// save running.nft after application
+		currentRuleset, err := nft.ListRulesetScript()
+		if err != nil {
+			// never write on a failed read, empty output would clobber the boot-restore ruleset
+			fmt.Fprintf(os.Stderr, "WARNING: failed to collect current running NFT ruleset: %v\n", err)
+		} else {
+			// write running nft output to persist file
+			if err := SaveRunningRuleset(string(currentRuleset)); err != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: failed to save NFT ruleset to disk: %v\n", err)
 			}
-			break
+		}
+
+		if err := WriteLastApplyDirect(configPath, checksum); err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: could not save last apply state: %v\n", err)
 		}
 
 		tools.Divider()
@@ -180,13 +182,14 @@ func RunApply(args []string) {
 			colour.Grey("·  "+colour.Cyan("nfty counters")+" for statistics"),
 		)
 	} else {
-		// formally apply generated NFT config
-		if err := nft.ApplyScript(script); err != nil {
-			fmt.Fprintf(os.Stderr, "apply failed: %v\n", err)
+
+		// resolve currently-running nfty path
+		// exit gracefully upon err
+		nftyPath, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not locate nfty binary for rollback timer: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("  %s\n", colour.Green("✓ ruleset applied - awaiting confirm"))
-		tools.Divider()
 
 		// write pending state to .json file on disk
 		if err := WritePending(configPath, checksum, *confirmSeconds); err != nil {
@@ -195,11 +198,32 @@ func RunApply(args []string) {
 		}
 
 		// schedule systemd rollback timer
-		nftyPath, _ := os.Executable()
 		if err := ScheduleRollback(*confirmSeconds, nftyPath); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to schedule rollback timer: %v\n", err)
-			fmt.Fprintln(os.Stderr, "WARNING: auto-rollback is NOT active. please confirm or manually rollback") // maybe kill process?
+			fmt.Fprintln(os.Stderr, "ERROR: rollback scheduling failed -- rejecting apply")
+			if err := ClearPending(); err != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: could not clear pending state file: %v\n", err)
+			}
+			os.Exit(1)
 		}
+
+		// formally apply generated NFT config
+		// timer is running at this stage, so any failure must disarm the timer
+		if err := nft.ApplyScript(script); err != nil {
+			fmt.Fprintf(os.Stderr, "apply failed: %v\n", err)
+			// cancel rollback timer
+			if err := CancelRollback(); err != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: could not cancel rollback timer: %v\n", err)
+			}
+			// clear pending state
+			if err := ClearPending(); err != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: could not clear pending state: %v\n", err)
+			}
+			os.Exit(1)
+		}
+
+		fmt.Printf("  %s\n", colour.Green("✓ ruleset applied - awaiting confirm"))
+		tools.Divider()
 
 		// output confirmation details
 		deadline := time.Now().Add(time.Duration(*confirmSeconds) * time.Second)

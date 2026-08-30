@@ -21,7 +21,7 @@ A simple network firewall manager for Linux that features diffs, user-friendly .
 
 Network security's important, and there's no reason you shouldn't have a hardened firewall on every server or VM in your homelab, even if firewalls aren't your strong suit.
 
-***Every time*** a ruleset is applied by nfty, automatic config rollback is put on a timer, stopped only when the user approves changes with a `nfty confirm` (60s default). If you accidentally lock yourself out or kill some service functionality, changes will revert upon timer expire or user-supplied `nfty rollback`.  
+***Every time*** a ruleset is applied by nfty, automatic config rollback is put on a timer, stopped only when the user approves changes with a `nfty confirm` (120s default). If you accidentally lock yourself out or kill some service functionality, changes will revert upon timer expire or user-supplied `nfty rollback`.  
 
 Built to function similarly to `commit confirmed`/`safe mode` on enterprise-grade network equipment, and to make changes & tinkering with firewalls more approachable and safer.  
 Additional details on how the rollback functionality works can be found here [Commit Confirm/Rollback](#commit-confirmrollback)
@@ -151,8 +151,8 @@ nfty check <config.toml>              validate config and show summary
     --list-ruleset                      show generated nftables script
 nfty diff <config.toml>               diff proposed config against live ruleset
 nfty apply <config.toml>              apply config with commit-confirm safety
-    --commit-confirm <seconds>          set rollback timer (default: 60)
-    --skip-confirm                      skip rollback timer (dangerous)
+    --commit-confirm <seconds>          set rollback timer (default: 120, min: 20)
+    --skip-confirm                      skip rollback timer (use with caution)
 nfty confirm                          confirm pending apply
 nfty rollback                         revert to previous ruleset snapshot
 nfty status                           show current state and pending changes

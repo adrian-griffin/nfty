@@ -4,3 +4,4 @@
 /testdata/local/
 /notes/
 *.log
+*_local_test.go
