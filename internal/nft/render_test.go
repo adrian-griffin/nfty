@@ -78,7 +78,7 @@ entries = []
 	}
 }
 
-// test for comment escaping
+// test for comment escaping in tale names
 func TestHashInTableName(t *testing.T) {
 	script, err := render(t, `
 [core]
@@ -94,5 +94,207 @@ action = "accept"
 `)
 	if err == nil {
 		t.Errorf("'#' accepted in table name, rendered:\n%s", script)
+	}
+}
+
+// test for comment escaping in list names
+func TestHashInListName(t *testing.T) {
+	script, err := render(t, base+`
+[lists.ipv4."ad#min"]
+entries = ["10.0.0.1"]
+`)
+	if err == nil {
+		t.Errorf("'#' accepted in list name, rendered:\n%s", script)
+	}
+}
+
+// test against space/whitespace in table names leading to splits in output nft script
+func TestSpaceInTableName(t *testing.T) {
+	script, err := render(t, `
+[core]
+name = "probe"
+table = "nfty evil"
+default_rules = false
+
+[[chains.ipv4.input]]
+comment = "allow ssh"
+protocol = "tcp"
+dport = 22
+action = "accept"
+`)
+	// if allowed, fail test
+	if err == nil {
+		t.Errorf("space accepted in table name, rendered:\n%s", script)
+	}
+}
+
+// test normalization of ct_state casing
+func TestCtStateCaseNormalized(t *testing.T) {
+	script, err := render(t, `
+[core]
+name = "probe"
+table = "nfty"
+default_rules = false
+
+[[chains.ipv4.input]]
+comment = "established"
+ct_state = ["ESTABLISHED", "RELATED"]
+action = "accept"
+`)
+	// if render errors, fail
+	if err != nil {
+		t.Fatalf("uppercase ct_state rejected: %v", err)
+	}
+	// if emitted script still has uppercase ESTABLISHED, fail
+	if strings.Contains(script, "ESTABLISHED") {
+		t.Errorf("ct_state not normalized to lowercase:\n%s", script)
+	}
+	// if emitted script does not have normalized est,rel nft script
+	if !strings.Contains(script, "ct state established,related") {
+		t.Errorf("expected lowercased ct_state in output:\n%s", script)
+	}
+}
+
+// Atoi accepts a leading +/- sign, negative rates need rejected
+func TestNegativeRateLimit(t *testing.T) {
+	script, err := render(t, `
+[core]
+name = "probe"
+table = "nfty"
+default_rules = false
+
+[[chains.ipv4.input]]
+comment = "allow ssh"
+protocol = "tcp"
+dport = 22
+action = "accept"
+rate_limit = { rate = "-5/second" }
+`)
+	// if render accepted a negative rate, fail
+	if err == nil {
+		t.Errorf("negative rate accepted, rendered:\n%s", script)
+	}
+}
+
+// a '+' signed positive rate is legal, but it must reach nft without any sign
+func TestSignedRateLimitNormalized(t *testing.T) {
+	script, err := render(t, `
+[core]
+name = "probe"
+table = "nfty"
+default_rules = false
+
+[[chains.ipv4.input]]
+comment = "allow ssh"
+protocol = "tcp"
+dport = 22
+action = "accept"
+rate_limit = { rate = "+5/second" }
+`)
+	if err != nil {
+		t.Fatalf("signed rate rejected: %v", err)
+	}
+	// if + sign survives normalization, fail
+	if strings.Contains(script, "+5/second") {
+		t.Errorf("rate sign survived normalization:\n%s", script)
+	}
+}
+
+// over_limit is only read by renderer when attached to a rate_limit
+// if present otherwise, it must be rejected
+func TestOverLimitCheckedWithoutRateLimit(t *testing.T) {
+	script, err := render(t, `
+[core]
+name = "probe"
+table = "nfty"
+default_rules = false
+
+[[chains.ipv4.input]]
+comment = "allow ssh"
+protocol = "tcp"
+dport = 22
+action = "accept"
+over_limit = "drop; something else"
+`)
+	// if renderer does not err with erroneous over_limit, fail
+	if err == nil {
+		t.Errorf("unvalidated over_limit accepted, rendered:\n%s", script)
+	}
+}
+
+// duplicate comment/name check is scoped per IP family
+// so same-name rules in v4 and v6 must be accepted
+func TestSameCommentAcrossFamilies(t *testing.T) {
+	_, err := render(t, `
+[core]
+name = "probe"
+table = "nfty"
+default_rules = false
+
+[[chains.ipv4.input]]
+comment = "allow ssh"
+protocol = "tcp"
+dport = 22
+action = "accept"
+
+[[chains.ipv6.input]]
+comment = "allow ssh"
+protocol = "tcp"
+dport = 22
+action = "accept"
+`)
+	if err != nil {
+		t.Errorf("same comment in ipv4 and ipv6 rejected: %v", err)
+	}
+}
+
+// within the same IP-family, dupes must be rejected (even on different chains)
+func TestDuplicateCommentWithinFamily(t *testing.T) {
+	script, err := render(t, `
+[core]
+name = "probe"
+table = "nfty"
+default_rules = false
+
+[[chains.ipv4.input]]
+comment = "allow ssh"
+protocol = "tcp"
+dport = 22
+action = "accept"
+
+[[chains.ipv4.forward]]
+comment = "allow ssh"
+protocol = "tcp"
+dport = 22
+action = "accept"
+`)
+	if err == nil {
+		t.Errorf("duplicate comment within ipv4 accepted, rendered:\n%s", script)
+	}
+}
+
+// interface names are interpolated inside quotes, so a space is contained
+// even though validateNFTString permits it
+func TestSpaceInInterfaceNameStaysQuoted(t *testing.T) {
+	script, err := render(t, `
+[core]
+name = "probe"
+table = "nfty"
+default_rules = false
+
+[[chains.ipv4.input]]
+comment = "allow ssh"
+iifname = "eth0 accept"
+protocol = "tcp"
+dport = 22
+action = "accept"
+`)
+	if err != nil {
+		t.Logf("rejected at load: %v", err)
+		return
+	}
+	// if string does not contain the quoted and spaced interface name, fail
+	if !strings.Contains(script, `iifname "eth0 accept"`) {
+		t.Errorf("spaced interface name escaped its quotes:\n%s", script)
 	}
 }

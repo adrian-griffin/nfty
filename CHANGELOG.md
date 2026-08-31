@@ -16,6 +16,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - init unit tests for prompt handling and commit-confirm duration
 - hardened toml config escaping, add toml tests
 - improved rate-limit, connection-state, and identifier validations
+- +/- and zero rate limits handling improvements, signed rates normalized (`+5/second` -> `5/second`)
+- normalize `ct_state` inputs before render
+- `over_limit` validates even without a `rate_limit` set
+- empty address-lists can no longer render malformed `elements = {  }` line
+- improved duplicate name/comment validations per IP-family
 
 
 ## [0.5.0] - 2026-May-9
