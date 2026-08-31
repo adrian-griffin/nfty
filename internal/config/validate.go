@@ -78,7 +78,12 @@ func validateConfig(cfg *Config) error {
 		return err
 	}
 
-	// validate all ipv4 list comments and cidrs are safe
+	// lowercase ct_states prior to the enum check below, so the renderer and the
+	// check agree on what the rule actually says
+	normalizeAllCtStates(cfg)
+
+	// validate that all ipv4 list comments and cidrs do not contain illegal chars
+	// and that ipv4 cidrs are valid
 	for name, list := range cfg.Lists.IPv4 {
 		if list.Comment != "" {
 			if err := validateNFTString(list.Comment, "lists.ipv4.comment"); err != nil {
@@ -92,35 +97,26 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	// stricter ip list name checking for v4
+	// set names are rendered unquoted, so they must be plain nft identifiers
 	for name := range cfg.Lists.IPv4 {
-		if err := validateNFTString(name, "lists.ipv4.name"); err != nil {
+		if err := validateNFTIdentifier(name, "lists.ipv4 name"); err != nil {
 			return err
-		}
-		if strings.ContainsAny(name, " \t@{}()") {
-			return fmt.Errorf("lists.ipv4.%s: list name contains invalid characters", name)
 		}
 	}
 
-	// stricter ip list name checking for v6
 	for name := range cfg.Lists.IPv6 {
-		if err := validateNFTString(name, "lists.ipv6.name"); err != nil {
+		if err := validateNFTIdentifier(name, "lists.ipv6 name"); err != nil {
 			return err
-		}
-		if strings.ContainsAny(name, " \t@{}()") {
-			return fmt.Errorf("lists.ipv6.%s: list name contains invalid characters", name)
 		}
 	}
 
-	// and table name
-	if err := validateNFTString(cfg.Core.Table, "core.table.name"); err != nil {
+	// and the table name, same reason
+	if err := validateNFTIdentifier(cfg.Core.Table, "core.table"); err != nil {
 		return err
 	}
-	if strings.ContainsAny(cfg.Core.Table, " \t@{}()") {
-		return fmt.Errorf("table name %s contains invalid characters", cfg.Core.Table)
-	}
 
-	// validate all ipv6 list comments and cidrs are safe
+	// validate that all ipv6 list comments and cidrs do not contain illegal chars
+	// and that ipv6 cidrs are valid
 	for name, list := range cfg.Lists.IPv6 {
 		if list.Comment != "" {
 			if err := validateNFTString(list.Comment, "lists.ipv6.comment"); err != nil {
@@ -190,11 +186,13 @@ func validateConfig(cfg *Config) error {
 				}
 			}
 
-			// validate over_limit is drop or log if set
-			if rule.OverLimit != "" && rule.OverLimit != "drop" && rule.OverLimit != "log" {
-				return fmt.Errorf("rule %q: over_limit must be \"drop\" or \"log\", got %q",
-					rule.Comment, rule.OverLimit)
-			}
+		}
+
+		// validate over_limit
+		// renders unquoted, so stays checked even when rate_limit is absent
+		if rule.OverLimit != "" && rule.OverLimit != "drop" && rule.OverLimit != "log" {
+			return fmt.Errorf("rule %q: over_limit must be \"drop\" or \"log\", got %q",
+				rule.Comment, rule.OverLimit)
 		}
 
 		for _, state := range rule.CtState {
@@ -368,13 +366,17 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	// validate no dupes on comments
-	ruleSeen := map[string]bool{}
+	// walks every rule in allRules and checks for dupes
+	// scoped per ip family
+	ruleSeen := map[string]bool{} // create empty map
 	for _, rule := range allRules {
-		if ruleSeen[rule.Comment] {
-			return fmt.Errorf("duplicate rule comment %q", rule.Comment)
+		// key is family + comment, true if already seen
+		// null byte '\x00' used as separator to avoid collisions
+		key := rule.Family + "\x00" + rule.Comment
+		if ruleSeen[key] {
+			return fmt.Errorf("duplicate rule comment %q in %s chains", rule.Comment, rule.Family)
 		}
-		ruleSeen[rule.Comment] = true
+		ruleSeen[key] = true
 	}
 
 	return nil

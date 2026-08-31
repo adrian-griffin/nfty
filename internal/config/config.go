@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -227,8 +228,13 @@ func normalizeRateLimit(rate string) (string, error) {
 	if len(parts) != 2 {
 		return "", fmt.Errorf("invalid rate format %q, expected \"N/unit\"", rate)
 	}
-	if _, err := strconv.Atoi(parts[0]); err != nil {
+	// Atoi accepts negative numbers, reject them here
+	count, err := strconv.Atoi(parts[0])
+	if err != nil {
 		return "", fmt.Errorf("invalid rate in %q: %w", rate, err)
+	}
+	if count <= 0 {
+		return "", fmt.Errorf("invalid rate in %q: rate must be greater than zero", rate)
 	}
 
 	unit := parts[1]
@@ -246,7 +252,8 @@ func normalizeRateLimit(rate string) (string, error) {
 			"expected second/minute/hour/day (or s/m/h/d)", parts[1], rate)
 	}
 
-	return parts[0] + "/" + unit, nil
+	// return rate (count/unit), re-render so that "+5" normalizes to "5"
+	return strconv.Itoa(count) + "/" + unit, nil
 }
 
 // rule meta information, not defined per-rule in toml
@@ -342,15 +349,20 @@ func validatePolicy(policy *ChainPolicy) error {
 	return nil
 }
 
-// sanitize and normalize rate limits inputs
-func normalizeAllRateLimits(cfg *Config) error {
-	chains := []*[]Rule{
+// creates pointers to each rule slice in config so that normalization
+// writes back into the config itself, rather than into a copy
+func chainRuleSlices(cfg *Config) []*[]Rule {
+	return []*[]Rule{
 		&cfg.Chains.IPv4.Input, &cfg.Chains.IPv4.Forward,
 		&cfg.Chains.IPv4.Output, &cfg.Chains.IPv4.Postrouting,
 		&cfg.Chains.IPv6.Input, &cfg.Chains.IPv6.Forward,
 		&cfg.Chains.IPv6.Output, &cfg.Chains.IPv6.Postrouting,
 	}
-	for _, chain := range chains {
+}
+
+// sanitize and normalize rate limits inputs
+func normalizeAllRateLimits(cfg *Config) error {
+	for _, chain := range chainRuleSlices(cfg) {
 		for i := range *chain {
 			if (*chain)[i].RateLimit != nil && (*chain)[i].RateLimit.Rate != "" {
 				normalized, err := normalizeRateLimit((*chain)[i].RateLimit.Rate)
@@ -365,11 +377,47 @@ func normalizeAllRateLimits(cfg *Config) error {
 	return nil
 }
 
-// sanitize any input strs
+// normalize & sanitize all connection states
+func normalizeAllCtStates(cfg *Config) {
+	// iterate all rules in all chains
+	for _, chain := range chainRuleSlices(cfg) {
+		for i := range *chain {
+			for j, state := range (*chain)[i].CtState {
+				// lowercase and trim whitespace
+				(*chain)[i].CtState[j] = strings.ToLower(strings.TrimSpace(state))
+			}
+		}
+	}
+}
+
+// sanitize input strs destined for insertion into nftables scripts
+// only safe when values are being rendered inside double-quotes
 func validateNFTString(value, field string) error {
 	if strings.ContainsAny(value, "\"\\\n\r;") {
 		return fmt.Errorf("%s must not contain quotes, backslashes, newlines, or semicolons", field)
 	}
+	return nil
+}
+
+// allowed character list for nftables identifiers (tables, chains, sets, etc.)
+var nftIdentifierPattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_.-]*$`)
+
+// validate nftables identifiers
+func validateNFTIdentifier(value, field string) error {
+	// must not be empty
+	if value == "" {
+		return fmt.Errorf("%s must not be empty", field)
+	}
+	// max len
+	if len(value) > 64 {
+		return fmt.Errorf("%s %q is too long (64 characters max)", field, value)
+	}
+	// must match allowed regex pattern/allowed chars
+	if !nftIdentifierPattern.MatchString(value) {
+		return fmt.Errorf("%s %q must start with a letter and contain only "+
+			"letters, digits, underscores, dots, or hyphens", field, value)
+	}
+	// return no error if all checks pass
 	return nil
 }
 

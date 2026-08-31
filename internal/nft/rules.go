@@ -356,9 +356,13 @@ func buildSet(name string, list config.AddressList, addrType string) string {
 		listOutput.WriteString(fmt.Sprintf("%scomment \"%s\"\n", t2, "nfty: "+list.Comment))
 	}
 
-	// normalize and sort set elements to match nft canonical output
+	// normalize and sort set elements to match standard nft output
 	normalized := normalizeAddrs(list.Entries)
-	listOutput.WriteString(fmt.Sprintf("%selements = { %s }\n", t2, strings.Join(normalized, ", ")))
+	// empty sets are legal nft, but `elements = { }` is not
+	// omit the line if there's nothing to declare
+	if len(normalized) > 0 {
+		listOutput.WriteString(fmt.Sprintf("%selements = { %s }\n", t2, strings.Join(normalized, ", ")))
+	}
 	listOutput.WriteString(t1 + "}\n")
 
 	return listOutput.String()

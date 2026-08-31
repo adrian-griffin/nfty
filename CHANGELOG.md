@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - stale systemd units cleared before scheduling, fixes second `apply` failing to arm its timer
 - `--commit-confirm` 20s minimum enforced, default raised 60s -> 120s
 - init unit tests for prompt handling and commit-confirm duration
+- hardened toml config escaping, add toml tests
+- improved rate-limit, connection-state, and identifier validations
 
 
 ## [0.5.0] - 2026-May-9
