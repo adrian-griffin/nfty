@@ -21,7 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `over_limit` validates even without a `rate_limit` set
 - empty address-lists can no longer render malformed `elements = {  }` line
 - improved duplicate name/comment validations per IP-family
-
+- improved src-port-only rule rendering
+- additional renderer go tests to validate proto (`udp/tcp`) and `dport/sport`
 
 ## [0.5.0] - 2026-May-9
 - global error handling improvements

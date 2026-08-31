@@ -298,3 +298,49 @@ action = "accept"
 		t.Errorf("spaced interface name escaped its quotes:\n%s", script)
 	}
 }
+
+// validate that src-port-only rules render correctly
+func TestSportOnlyRule(t *testing.T) {
+	script, err := render(t, `
+[core]
+name = "probe"
+table = "nfty"
+default_rules = false
+
+[[chains.ipv4.input]]
+comment = "allow ntp replies"
+protocol = "udp"
+sport = [123]
+action = "accept"
+`)
+	if err != nil {
+		t.Fatalf("sport-only rule rejected: %v", err)
+	}
+	// check if renderer emits proper src-port nft
+	if !strings.Contains(script, `udp sport 123 counter accept comment "nfty: allow ntp replies"`) {
+		t.Errorf("expected sport-only rule in output:\n%s", script)
+	}
+	// check if renderer emits dst-port rule erroneously
+	if strings.Contains(script, "dport") {
+		t.Errorf("sport-only rule invented a dport:\n%s", script)
+	}
+}
+
+// ensure that tcp/udp rules with no port number defined are rejected
+func TestProtocolWithNoPorts(t *testing.T) {
+	script, err := render(t, `
+[core]
+name = "probe"
+table = "nfty"
+default_rules = false
+
+[[chains.ipv4.input]]
+comment = "portless tcp"
+protocol = "tcp"
+action = "accept"
+`)
+	// if renderer accepts, fail test
+	if err == nil {
+		t.Errorf("tcp rule with no ports accepted, rendered:\n%s", script)
+	}
+}

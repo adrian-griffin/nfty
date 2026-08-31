@@ -1,0 +1,73 @@
+#!/usr/sbin/nft -f
+
+table ip nfty-minimal
+delete table ip nfty-minimal
+table ip6 nfty-minimal
+delete table ip6 nfty-minimal
+
+table ip nfty-minimal {
+	set trusted {
+		type ipv4_addr
+		flags interval
+		auto-merge
+		comment "nfty: List of trusted host IPs or subnets"
+		elements = { 10.100.1.0/24, 172.16.1.0/24 }
+	}
+
+	chain input {
+		type filter hook input priority filter; policy drop;
+		iif "lo" counter accept comment "nfty:d: allow loopback"
+		udp sport 67 udp dport 68 counter accept comment "nfty:d: allow DHCPv4 client"
+		meta l4proto icmp limit rate 10/second counter accept comment "nfty:d: icmp rate limit"
+		meta l4proto icmp counter drop comment "nfty:d: icmp over limit"
+		ct state established,related counter accept comment "nfty:d: allow established"
+		ct state invalid counter drop comment "nfty:d: drop invalid"
+		tcp dport 22 ip saddr { 10.100.1.5, 10.100.1.10 } counter accept comment "nfty: Allow SSH Login"
+		tcp dport { 80, 443 } ip saddr @trusted counter accept comment "nfty: Web HTTP/HTTPS Access"
+		tcp dport 22 counter log prefix "NFTY DROP 22/TCP: " comment "nfty:d: SSH log"
+		tcp dport 22 counter drop comment "nfty:d: SSH drop"
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related counter accept comment "nfty:d: allow established"
+		ct state invalid counter drop comment "nfty:d: drop invalid"
+	}
+
+	chain output {
+		type filter hook output priority filter; policy accept;
+	}
+
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+	}
+}
+
+table ip6 nfty-minimal {
+	chain input {
+		type filter hook input priority filter; policy drop;
+		iif "lo" counter accept comment "nfty:d: allow loopback"
+		icmpv6 type { nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } counter accept comment "nfty:d: allow NDP"
+		ip6 saddr fe80::/10 udp sport 547 udp dport 546 counter accept comment "nfty:d: allow DHCPv6 client"
+		meta l4proto ipv6-icmp limit rate 10/second counter accept comment "nfty:d: ipv6-icmp rate limit"
+		meta l4proto ipv6-icmp counter drop comment "nfty:d: ipv6-icmp over limit"
+		ct state established,related counter accept comment "nfty:d: allow established"
+		ct state invalid counter drop comment "nfty:d: drop invalid"
+		tcp dport 22 counter log prefix "NFTY DROP 22/TCP: " comment "nfty:d: SSH log"
+		tcp dport 22 counter drop comment "nfty:d: SSH drop"
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related counter accept comment "nfty:d: allow established"
+		ct state invalid counter drop comment "nfty:d: drop invalid"
+	}
+
+	chain output {
+		type filter hook output priority filter; policy accept;
+	}
+
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+	}
+}

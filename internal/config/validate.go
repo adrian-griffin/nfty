@@ -249,12 +249,13 @@ func validateConfig(cfg *Config) error {
 			}
 		}
 
-		// tcp or udp only can be passed with corresponding dport number
+		// tcp or udp rules need a port to match on, either src-port or dst-port
 		if len(rule.Protocol.Protocols) > 0 {
 			for _, proto := range rule.Protocol.Protocols {
 				if proto == "tcp" || proto == "udp" {
-					if len(rule.DPort) == 0 {
-						return fmt.Errorf("rule %q: protocol udp or tcp only valid with dport",
+					// if both dport and sport are empty, return err
+					if len(rule.DPort) == 0 && len(rule.SPort) == 0 {
+						return fmt.Errorf("rule %q: protocol udp or tcp requires a dport or sport",
 							rule.Comment)
 					}
 				}

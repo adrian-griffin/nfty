@@ -491,9 +491,9 @@ func buildMatchCriteria(rule config.Rule, proto string, family string) ([]string
 		if len(rule.DPort) > 0 {
 			// "tcp dport 22" or "udp dport { 53, 5353 }"
 			parts = append(parts, fmt.Sprintf("%s dport %s", proto, formatPort(rule.DPort)))
-		} else {
-			// return err if no dport # passed
-			return nil, fmt.Errorf("protocol passed without any dst port specified")
+		} else if len(rule.SPort) == 0 {
+			// if neither dport nor sport specified, return error
+			return nil, fmt.Errorf("protocol passed without any src or dst port specified")
 		}
 		// or if icmp/icmp6, do `meta l4` writing
 	} else if proto == "icmp" || proto == "icmpv6" {
