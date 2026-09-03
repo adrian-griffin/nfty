@@ -12,6 +12,7 @@ import (
 	"github.com/adrian-griffin/nfty/internal/meta"
 	"github.com/adrian-griffin/nfty/internal/nft"
 	"github.com/adrian-griffin/nfty/internal/tools"
+	"github.com/adrian-griffin/nfty/internal/tui"
 )
 
 func main() {
@@ -61,6 +62,8 @@ func main() {
 		commit.RunApply(os.Args[2:])
 	case "status":
 		core.RunStatus()
+	case "tui":
+		tui.Run()
 	case "confirm":
 		commit.RunConfirm()
 	case "rollback":
@@ -92,6 +95,7 @@ func printUsage() {
 	fmt.Println("      --list-ruleset                 list target's NFT ruleset output")
 	fmt.Println("  status                           show current status")
 	fmt.Println("      --list-ruleset                 list current NFT ruleset output")
+	fmt.Println("  tui                              interactive status view")
 	fmt.Println("  diff <config.toml>               show changes against current ruleset")
 	fmt.Println("  apply <config.toml>              apply target config")
 	fmt.Printf("      --commit-confirm <seconds>     set rollback timer (default: %d, min: %d)\n",

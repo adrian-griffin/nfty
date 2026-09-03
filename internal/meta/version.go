@@ -3,6 +3,6 @@
 package meta
 
 const (
-	Version = "v0.5.1"
+	Version = "v0.5.2"
 	MOTD    = "i see you are // reading my mind // back to me"
 )

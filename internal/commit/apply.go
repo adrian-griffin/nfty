@@ -113,7 +113,8 @@ func RunApply(args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("  %s %s %s\n", colour.Grey("loaded config:"), cfg.Core.Name, colour.DarkGrey(cfg.Core.Description))
+	fmt.Printf("  %s %s\n", colour.Grey("loaded config:"), cfg.Core.Name)
+	fmt.Printf("     %s\n", colour.DarkGrey(cfg.Core.Description))
 	fmt.Printf("  %s\n", colour.Grey("if not confirmed (due to lockout, terminated ssh session, etc), firewall will revert to previous known good state"))
 	fmt.Println()
 	fmt.Printf("  %s %s\n", colour.Grey("checksum:"), colour.DarkGrey(checksum))
@@ -237,9 +238,9 @@ func RunApply(args []string) {
 		tools.Divider()
 
 		fmt.Printf("  %s  %s  %s\n",
-			colour.Grey("run "+colour.Cyan("nfty confirm")+" to approve"),
-			colour.Grey("·  "+colour.Cyan("nfty rollback")+" to undo"),
-			colour.Grey("·  "+colour.Cyan("nfty status")+" for more info"),
+			colour.Cyan("nfty confirm")+colour.Grey(" to approve"),
+			colour.Grey("·  ")+colour.Cyan("nfty rollback")+colour.Grey(" to undo"),
+			colour.Grey("·  ")+colour.Cyan("nfty status")+colour.Grey(" for more info"),
 		)
 	}
 	os.Exit(0)

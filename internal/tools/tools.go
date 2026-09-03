@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -18,6 +19,9 @@ import (
 
 // max length left-column for labels
 const LabelWidth = 18
+
+// section divider width (tui, cli)
+const DividerWidth = 52
 
 // struct for stderr alerts/warns/errs
 type Issue struct {
@@ -104,23 +108,34 @@ func Label(s string) string {
 	return colour.Grey(fmt.Sprintf("%-*s", LabelWidth, s))
 }
 
-// writes section divier
+// wrapper function that writes section dividers to stdout/cli
 func Divider() {
-	fmt.Println(colour.Grey("  " + strings.Repeat("─", 52)))
+	FDivider(os.Stdout)
 }
 
+// Fprints divider line to writer, primarily for use in tui frames
+func FDivider(w io.Writer) {
+	fmt.Fprintln(w, colour.Grey("  "+strings.Repeat("─", DividerWidth)))
+}
+
+// wrapper function that writes command header to stdout/cli
 func CommandExecuteHeader(subcommand string) {
+	FCommandExecuteHeader(os.Stdout, subcommand)
+}
+
+// Fprints command header to writer, primarily for use in tui frames
+func FCommandExecuteHeader(w io.Writer, subcommand string) {
 	// hostname for the header line
 	hostname, _ := os.Hostname()
 	now := time.Now().Format("2006-01-02 15:04:05")
 
-	fmt.Printf("\n  %s %s%s%s\n",
+	fmt.Fprintf(w, "\n  %s %s%s%s\n",
 		colour.Grey("nfty"),
 		colour.Bold(subcommand),
 		strings.Repeat(" ", 15),
 		colour.DarkGrey(hostname+" · "+now),
 	)
-	Divider()
+	FDivider(w)
 }
 
 // gathers file path & last-edited time
