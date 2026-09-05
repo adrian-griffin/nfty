@@ -4,9 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.5.2] - 2026-Sep-2
+## [0.5.2] - 2026-Sep-5
 - add interactive TUI for status display 
 - reworked status struct and rendering logic for dual tui + cli support
+- dynamic tui-scaling for varying terminal widths 
+- dynamic .toml path resolution
+- in-tui path text editor
+- help page within tui, along with stubs for future pages
+- comprehensive test for tui rendering and safety
 
 ## [0.5.1] - 2026-Aug-30
 - fixed port-range validation logic bug

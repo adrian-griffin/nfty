@@ -23,8 +23,9 @@ func enabled() bool {
 
 // colours
 const (
-	reset = "\033[0m"
-	bold  = "\033[1m"
+	reset     = "\033[0m"
+	bold      = "\033[1m"
+	underline = "\033[4m"
 
 	fgRed      = "\033[31m"
 	fgGreen    = "\033[32m"
@@ -43,14 +44,15 @@ func wrap(code, s string) string {
 }
 
 // colour wrappers
-func Bold(s string) string     { return wrap(bold, s) }
-func Red(s string) string      { return wrap(fgRed, s) }
-func Green(s string) string    { return wrap(fgGreen, s) }
-func Blue(s string) string     { return wrap(fgBlue, s) }
-func Yellow(s string) string   { return wrap(fgYellow, s) }
-func Cyan(s string) string     { return wrap(fgCyan, s) }
-func DarkGrey(s string) string { return wrap(fgDarkGrey, s) }
-func Grey(s string) string     { return wrap(fgGrey, s) }
+func Bold(s string) string      { return wrap(bold, s) }
+func Underline(s string) string { return wrap(underline, s) }
+func Red(s string) string       { return wrap(fgRed, s) }
+func Green(s string) string     { return wrap(fgGreen, s) }
+func Blue(s string) string      { return wrap(fgBlue, s) }
+func Yellow(s string) string    { return wrap(fgYellow, s) }
+func Cyan(s string) string      { return wrap(fgCyan, s) }
+func DarkGrey(s string) string  { return wrap(fgDarkGrey, s) }
+func Grey(s string) string      { return wrap(fgGrey, s) }
 
 // strf formatters
 func Boldf(format string, a ...any) string     { return Bold(fmt.Sprintf(format, a...)) }

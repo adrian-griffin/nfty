@@ -51,10 +51,9 @@ func main() {
 		})
 	}
 
-	// subcommand routing
+	// if nothing is passed, open tui
 	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
+		tui.Run(os.Args[1:])
 	}
 
 	switch os.Args[1] {
@@ -63,7 +62,7 @@ func main() {
 	case "status":
 		core.RunStatus()
 	case "tui":
-		tui.Run()
+		tui.Run(os.Args[2:])
 	case "confirm":
 		commit.RunConfirm()
 	case "rollback":
@@ -95,7 +94,8 @@ func printUsage() {
 	fmt.Println("      --list-ruleset                 list target's NFT ruleset output")
 	fmt.Println("  status                           show current status")
 	fmt.Println("      --list-ruleset                 list current NFT ruleset output")
-	fmt.Println("  tui                              interactive status view")
+	fmt.Println("  tui [config.toml]                interactive status view")
+	fmt.Println("                                     path defaults to the last applied config")
 	fmt.Println("  diff <config.toml>               show changes against current ruleset")
 	fmt.Println("  apply <config.toml>              apply target config")
 	fmt.Printf("      --commit-confirm <seconds>     set rollback timer (default: %d, min: %d)\n",

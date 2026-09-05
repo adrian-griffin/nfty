@@ -118,6 +118,49 @@ func diffScripts(oldLabel, newLabel, oldScript, newScript string) (string, bool,
 	return "", false, nil
 }
 
+// counts added and removed lines of any diff, ignores the ---/+++ headers
+func countDiffLines(diff string) (adds, removes int) {
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
+			adds++
+		case strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"):
+			removes++
+		}
+	}
+	return adds, removes
+}
+
+// reports how many lines a proposed script would add and remove against
+// the live nfty tables
+func DiffStat(table, proposed string) (adds, removes int, err error) {
+	// nfty's own tables only, the same pair standard RunDiff compares against
+	ipTable, err := listTableOrEmpty("ip", table)
+	if err != nil {
+		return 0, 0, err
+	}
+	ip6Table, err := listTableOrEmpty("ip6", table)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	diffOutput, changed, err := diffScripts(
+		"current ruleset",
+		"proposed ruleset",
+		ipTable+"\n"+ip6Table,
+		stripPreamble(proposed),
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+	if !changed {
+		return 0, 0, nil
+	}
+
+	adds, removes = countDiffLines(diffOutput)
+	return adds, removes, nil
+}
+
 // is called by `nfty diff <.toml>`, compares against current NFTables output
 func RunDiff(args []string) {
 	args = tools.SortFlags(args)
@@ -205,15 +248,7 @@ func RunDiff(args []string) {
 	}
 
 	// counts # of adds/rems for summary
-	adds, removes := 0, 0
-	for _, line := range strings.Split(diffOutput, "\n") {
-		switch {
-		case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
-			adds++
-		case strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"):
-			removes++
-		}
-	}
+	adds, removes := countDiffLines(diffOutput)
 
 	fmt.Printf("  %s  %s\n",
 		colour.Green(fmt.Sprintf("+%d lines", adds)),
