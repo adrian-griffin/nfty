@@ -171,7 +171,7 @@ func (m model) renderConfig(b *strings.Builder) {
 			r.write("  ", nil).
 				write(fmt.Sprintf("+%d", m.diff.adds), colour.Green).
 				write(" ", nil).
-				write(fmt.Sprintf("−%d", m.diff.removes), colour.Red).
+				write(fmt.Sprintf("-%d", m.diff.removes), colour.Red).
 				write(" lines", colour.DarkGrey)
 		}
 		b.WriteString(r.String() + "\n")
