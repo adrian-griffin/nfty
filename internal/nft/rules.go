@@ -98,6 +98,14 @@ func formatICMPProto(family string) string {
 	return "icmp"
 }
 
+// removes nfty ip (v4+v6) tables of supplied name (atomic and safe whether existing or not)
+// creates and then deletes to avoid erroring on a fresh box
+// table name is already validated prior to this point, so inepreted as is
+func DeleteTables(name string) string {
+	return fmt.Sprintf("table ip %s\ndelete table ip %s\ntable ip6 %s\ndelete table ip6 %s\n",
+		name, name, name, name)
+}
+
 // generates full nftables ruleset as a string from a nfty config
 func Generate(cfg *config.Config) (string, error) {
 	var nftablesOutput strings.Builder
@@ -107,8 +115,8 @@ func Generate(cfg *config.Config) (string, error) {
 
 	// atomic table cleanup, because nft is sketchy af
 	// always create table-name, then delete it to ensure a clean slate during rule application
-	nftablesOutput.WriteString(fmt.Sprintf("table ip %s\ndelete table ip %s\n", cfg.Core.Table, cfg.Core.Table))
-	nftablesOutput.WriteString(fmt.Sprintf("table ip6 %s\ndelete table ip6 %s\n\n", cfg.Core.Table, cfg.Core.Table))
+	nftablesOutput.WriteString(DeleteTables(cfg.Core.Table))
+	nftablesOutput.WriteString("\n")
 
 	// build ip4 table
 	ipv4Table, err := buildTable("ip", cfg.Core.Table, cfg.Lists.IPv4,
