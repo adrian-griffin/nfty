@@ -144,7 +144,7 @@ var helpSections = []struct{ head, body string }{
 		"nfty's config and the firewalls it builds are defined via .toml, and the resulting firewall rulesets " +
 			"rendered into nftables script for the system.\n\n nfty simplifies managing linux firewalls, increases visibility, " +
 			"lints rulesets for gaps in security, and stops accidental lockouts.\n\n Staged changes are compared against the live " +
-			"rules and diffed, and applying changes requires a 2-step confirm process -- changes will always revert unless confirmed."},
+			"rules and diffed, and applying changes requires a 2-step confirm process, changes will always revert unless confirmed."},
 	{"lockout prevention",
 		"Every apply arms a rollback before any new rules take effect. All changes will be undone " +
 			"unless a 2nd confirm is supplied, allowing you to test, check, and validate before committing.\n\n" +

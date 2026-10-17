@@ -83,3 +83,63 @@ func TestPromoteScriptCopiesPendingExactly(t *testing.T) {
 	}
 }
 
+// a pending.nft that doesnt match pending.json must never be confirmed
+func TestPromoteScriptRejectsChecksumMismatch(t *testing.T) {
+	dir := t.TempDir()
+	pending := filepath.Join(dir, "pending.nft")
+	confirmed := filepath.Join(dir, "confirmed.nft")
+	if err := os.WriteFile(pending, []byte("table ip nfty {\n}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(confirmed, []byte("PREVIOUS"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := promoteScript(pending, confirmed, "00000000"); err == nil {
+		t.Fatal("promote accepted a checksum mismatch")
+	}
+	got, err := os.ReadFile(confirmed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "PREVIOUS" {
+		t.Errorf("rejected promote still changed the confirmed script, got:\n%s", got)
+	}
+}
+
+// overwriting/atomic write leaves no tmp or clutter files, and must be the proper perms
+func TestWriteFileAtomicReplacesWithoutLeftovers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	for _, body := range []string{"first", "second"} {
+		if err := writeFileAtomic(path, []byte(body), 0600); err != nil {
+			t.Fatalf("write %q: %v", body, err)
+		}
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "second" {
+		t.Errorf("expected last write to win, got %q", got)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		names := []string{}
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("expected only the target file, found %v", names)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Errorf("mode %o, want 600", perm)
+	}
+}
