@@ -1,5 +1,5 @@
 // apply.go
-// logic for new ruleset application
+// appying the new ruleset
 package commit
 
 import (
@@ -65,8 +65,14 @@ func RunApply(args []string) {
 		os.Exit(1)
 	}
 
+	// ensure renaming the table in .toml doesnt result in previous tables getting left behind
+	applyScript := script
+	if old := confirmedTableName(); old != "" && old != cfg.Core.Table {
+		applyScript = nft.DeleteTables(old) + script
+	}
+
 	// validate script syntax with `nft --cf`
-	if err := nft.ValidateScript(script); err != nil {
+	if err := nft.ValidateScript(applyScript); err != nil {
 		fmt.Fprintf(os.Stderr, "nft syntax validation failed: %v\n", err)
 		os.Exit(1)
 	}
@@ -101,21 +107,20 @@ func RunApply(args []string) {
 		}
 	}
 
-	// collect current ruleset for rollback config
-	currentRuleset, err := nft.ListRulesetScript()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to snapshot current ruleset: %v\n", err)
-		os.Exit(1)
-	}
-	// save current ruleset as snapshot to disk
-	if err := SaveRollbackSnapshot(currentRuleset); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to save rollback snapshot: %v\n", err)
-		os.Exit(1)
-	}
+	// determine if there exists any previously-confirmed ruleset
+	// dumps script and err since this only affects the output message here
+	// and rollback logic re-polls for confirmed status anyway
+	_, haveConfirmed, _ := LoadConfirmed()
 
 	fmt.Printf("  %s %s\n", colour.Grey("loaded config:"), cfg.Core.Name)
 	fmt.Printf("     %s\n", colour.DarkGrey(cfg.Core.Description))
-	fmt.Printf("  %s\n", colour.Grey("if not confirmed (due to lockout, terminated ssh session, etc), firewall will revert to previous known good state"))
+	// if this machine has an existing confirmed ruleset
+	if haveConfirmed {
+		fmt.Printf("  %s\n", colour.Grey("if not confirmed (due to lockout, terminated ssh session, etc), firewall will revert to the last confirmed ruleset"))
+		// if this machine does NOT have an existing confirmed ruleset
+	} else {
+		fmt.Printf("  %s\n", colour.Grey("no ruleset has been confirmed yet, if not confirmed (due to lockout, terminated ssh session, etc), nfty's tables will be removed"))
+	}
 	fmt.Println()
 	fmt.Printf("  %s %s\n", colour.Grey("checksum:"), colour.DarkGrey(checksum))
 
@@ -154,32 +159,25 @@ func RunApply(args []string) {
 		}
 
 		// formally apply generated NFT config
-		if err := nft.ApplyScript(script); err != nil {
+		if err := nft.ApplyScript(applyScript); err != nil {
 			fmt.Fprintf(os.Stderr, "  apply failed: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Printf("%s\n", colour.Green("  ✓ ruleset applied and committed"))
 
-		// save running.nft after application
-		currentRuleset, err := nft.ListRulesetScript()
-		if err != nil {
-			// never write on a failed read, empty output would clobber the boot-restore ruleset
-			fmt.Fprintf(os.Stderr, "WARNING: failed to collect current running NFT ruleset: %v\n", err)
-		} else {
-			// write running nft output to persist file
-			if err := SaveRunningRuleset(string(currentRuleset)); err != nil {
-				fmt.Fprintf(os.Stderr, "WARNING: failed to save NFT ruleset to disk: %v\n", err)
-			}
-		}
-
-		if err := WriteLastApplyDirect(configPath, checksum); err != nil {
+		// save confirmed nftables ruleset to state for persistence
+		if err := WriteConfirmed(script); err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: failed to persist confirmed ruleset, rollback will restore the previous one: %v\n", err)
+		} else if err := WriteLastApplyDirect(configPath, checksum, cfg.Core.Table); err != nil {
 			fmt.Fprintf(os.Stderr, "WARNING: could not save last apply state: %v\n", err)
 		}
 
 		tools.Divider()
 
+		// with skip-confirm, this ruleset is now the confirmed ruleset
+		// notify operator that a nfty apply of a the previous config is the only rollback path
 		fmt.Printf("  %s  %s\n",
-			colour.Grey("run "+colour.Cyan("nfty rollback")+" to revert"),
+			colour.Grey("re-apply the previous config to revert"),
 			colour.Grey("·  "+colour.Cyan("nfty counters")+" for statistics"),
 		)
 	} else {
@@ -193,7 +191,7 @@ func RunApply(args []string) {
 		}
 
 		// write pending state to .json file on disk
-		if err := WritePending(configPath, checksum, *confirmSeconds); err != nil {
+		if err := WritePending(configPath, checksum, cfg.Core.Table, script, *confirmSeconds); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to write pending state: %v\n", err)
 			os.Exit(1)
 		}
@@ -201,7 +199,7 @@ func RunApply(args []string) {
 		// schedule systemd rollback timer
 		if err := ScheduleRollback(*confirmSeconds, nftyPath); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to schedule rollback timer: %v\n", err)
-			fmt.Fprintln(os.Stderr, "ERROR: rollback scheduling failed -- rejecting apply")
+			fmt.Fprintln(os.Stderr, "ERROR: rollback scheduling failed, rejecting apply")
 			if err := ClearPending(); err != nil {
 				fmt.Fprintf(os.Stderr, "WARNING: could not clear pending state file: %v\n", err)
 			}
@@ -210,7 +208,7 @@ func RunApply(args []string) {
 
 		// formally apply generated NFT config
 		// timer is running at this stage, so any failure must disarm the timer
-		if err := nft.ApplyScript(script); err != nil {
+		if err := nft.ApplyScript(applyScript); err != nil {
 			fmt.Fprintf(os.Stderr, "apply failed: %v\n", err)
 			// cancel rollback timer
 			if err := CancelRollback(); err != nil {

@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/adrian-griffin/nfty/internal/colour"
-	"github.com/adrian-griffin/nfty/internal/nft"
 	"github.com/adrian-griffin/nfty/internal/tools"
 )
 
@@ -39,26 +38,29 @@ func RunConfirm() {
 		fmt.Fprintf(os.Stderr, "WARNING: could not cancel rollback timer: %v\n", err)
 	}
 
-	// persist current ruleset for boot restore
-	currentRuleset, err := nft.ListRulesetScript()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "WARNING: could not read current ruleset for persistence: %v\n", err)
+	// promote what was applied to the confirmed ruleset
+	// last-apply.json describes confirmed.nft, so only write it once the promote has landed
+	persisted := false
+	if state == nil {
+		fmt.Fprintln(os.Stderr, "ERROR: could not persist confirmed ruleset without pending state")
+	} else if err := PromotePending(state); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: could not persist confirmed ruleset: %v\n", err)
 	} else {
-		if err := SaveRunningRuleset(string(currentRuleset)); err != nil {
-			fmt.Fprintf(os.Stderr, "WARNING: could not apply ruleset to running configuration: %v\n", err)
-		}
-	}
-
-	// prior to clearing, write state to last-apply.json
-	if state != nil {
+		persisted = true
 		if err := WriteLastApply(state); err != nil {
-			fmt.Fprintf(os.Stderr, "WARNING: could not persists last apply state to last-apply.json: %v\n", err)
+			fmt.Fprintf(os.Stderr, "WARNING: could not persist last apply state to last-apply.json: %v\n", err)
 		}
 	}
 
 	// rollback is already cancelled at this point, clear pending
 	if err := ClearPending(); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: could not clear pending state: %v\n", err)
+		os.Exit(1)
+	}
+
+	// the live ruleset stays, but nothing on disk describes it, so say so and fail the run
+	if !persisted {
+		fmt.Fprintln(os.Stderr, "ERROR: the live ruleset was not persisted! A rollback will restore the previous confirmed ruleset, re-run nfty apply to persist it")
 		os.Exit(1)
 	}
 

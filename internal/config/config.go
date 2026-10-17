@@ -421,6 +421,11 @@ func validateNFTIdentifier(value, field string) error {
 	return nil
 }
 
+// validates a table name that did NOT come through config validation, such as one read from a state file
+func ValidateTableName(name string) error {
+	return validateNFTIdentifier(name, "table name")
+}
+
 // set chains.policy defaults
 func setPolicyDefaults(policy *ChainPolicy) {
 	if policy.Input == "" {

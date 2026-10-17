@@ -53,8 +53,8 @@ func GatherStatus() (*Status, error) {
 
 	// loop through state files, check if exist, gather size + age info
 	for _, f := range []StateFile{
-		{Label: "running.nft", Path: commit.RunningFile},
-		{Label: "rollback.nft", Path: commit.RollbackFile},
+		{Label: "confirmed.nft", Path: commit.ConfirmedFile},
+		{Label: "pending.nft", Path: commit.PendingScriptFile},
 		{Label: "last-apply.json", Path: commit.LastApplyFile},
 	} {
 		// if file exists, mark as present and gather fileinfo

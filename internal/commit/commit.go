@@ -7,16 +7,24 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/adrian-griffin/nfty/internal/config"
+	"github.com/adrian-griffin/nfty/internal/nft"
 )
 
 const (
-	BaseDir       = "/var/nfty"
-	RollbackFile  = "/var/nfty/rollback.nft"
-	RunningFile   = "/var/nfty/running.nft"
-	PendingFile   = "/var/nfty/pending.json"
-	LastApplyFile = "/var/nfty/last-apply.json"
-	TimerUnit     = "nfty-commit-confirm"
+	BaseDir = "/var/nfty"
+	// last-operator confirmed nftables script
+	// the statefile used for failsafe operations, like rollback, rollback timer, and boot
+	ConfirmedFile = "/var/nfty/confirmed.nft"
+	// applied/pending nftables script, moves > ConfirmedFile on confirm
+	PendingScriptFile = "/var/nfty/pending.nft"
+	PendingFile       = "/var/nfty/pending.json"
+	LastApplyFile     = "/var/nfty/last-apply.json"
+	TimerUnit         = "nfty-commit-confirm"
 
 	// if rollback timer is set to a shorter duration than the nftables apply takes
 	// it can lead to an edge-case race condition/conflict
@@ -33,6 +41,7 @@ type PendingState struct {
 	AppliedAt  time.Time `json:"applied_at"`
 	Deadline   time.Time `json:"deadline"`
 	Checksum   string    `json:"checksum"`
+	Table      string    `json:"table"`
 }
 
 // same deal for last-apply.json output
@@ -42,6 +51,7 @@ type LastApply struct {
 	AppliedAt   time.Time `json:"applied_at"`
 	ConfirmedAt time.Time `json:"confirmed_at"`
 	Checksum    string    `json:"checksum"`
+	Table       string    `json:"table,omitempty"`
 }
 
 // ensure nfty homedir exists
@@ -49,38 +59,134 @@ func CheckDir() error {
 	return os.MkdirAll(BaseDir, 0700)
 }
 
-// writes pre-nfty-apply NFT ruleset to rollback.nft for use in emergency
-func SaveRollbackSnapshot(currentRuleset []byte) error {
-	prependFlushRuleset := append([]byte("flush ruleset\n"), currentRuleset...)
-	return os.WriteFile(RollbackFile, prependFlushRuleset, 0600)
-}
-
-// reads the previiously-written rollback config for restoration
-func LoadRollbackSnapshot() (string, error) {
-	data, err := os.ReadFile(RollbackFile)
+// write confirmed ruleset. this file is fairly load-bearing, so file is written
+// to a temp file and renamed/moved to safeguard against crashes mid-write or truncated files
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
-		return "", fmt.Errorf("reading rollback snapshot: %w", err)
+		return err
 	}
-	return string(data), nil
-}
+	// does nothing if file is moved successfully
+	defer os.Remove(tmp.Name())
 
-// writes currently-running ruleset to running.nft for persistence
-func SaveRunningRuleset(script string) error {
-	return os.WriteFile(RunningFile, []byte(script), 0600)
-}
+	// partial iterations, with error returnal each step
 
-// loads running.nft file for application upon boot
-func LoadRunningRuleset() (string, error) {
-	data, err := os.ReadFile(RunningFile)
+	// write file data
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	// adjust permissions
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		return err
+	}
+	// ensure kernel has flushed meta/data to storage
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	// close file writer
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	// rename file and move to final confirm.nft path
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return err
+	}
+
+	// fsync the directory too, otherwise the rename itself can be lost on power failure
+	d, err := os.Open(dir)
 	if err != nil {
-		return "", fmt.Errorf("reading running ruleset: %w", err)
+		return err
 	}
-	return string(data), nil
+	defer d.Close()
+	return d.Sync()
+}
+
+// writes a script as the confirmed ruleset, used by --skip-confirm
+func WriteConfirmed(script string) error {
+	return writeFileAtomic(ConfirmedFile, []byte(script), 0600)
+}
+
+// reads the confirmed ruleset, found is false if no apply has ever been confirmed
+func LoadConfirmed() (script string, found bool, err error) {
+	data, err := os.ReadFile(ConfirmedFile)
+	if os.IsNotExist(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("reading confirmed ruleset: %w", err)
+	}
+	return string(data), true, nil
+}
+
+// wrapper to promote pending nfty-rendered nftables config to confirmed
+func PromotePending(state *PendingState) error {
+	return promoteScript(PendingScriptFile, ConfirmedFile, state.Checksum)
+}
+
+// open pending path, compare pending.json and pending.nft
+// if they match, write pending to promoted/confirmed
+func promoteScript(pendingPath, confirmedPath, checksum string) error {
+	data, err := os.ReadFile(pendingPath)
+	if err != nil {
+		return fmt.Errorf("reading pending script: %w", err)
+	}
+	// pending.json and pending.nft are written separately, refuse a pair that don't match
+	if got := nft.ScriptChecksum(string(data)); got != checksum {
+		return fmt.Errorf("pending script checksum %s does not match pending state %s", got, checksum)
+	}
+	return writeFileAtomic(confirmedPath, data, 0600)
+}
+
+// build the nftables script that is used for rollback / undoes a pending apply
+func buildRollbackScript(confirmed string, haveConfirmed bool, pendingTable, confirmedTable string) string {
+	var b strings.Builder
+	// check pending AND previously confirmed table-names to prevent leaving behind
+	// previous nfty rulesets on table name change, write clears to new rollback table
+	if pendingTable != "" && (!haveConfirmed || pendingTable != confirmedTable) {
+		b.WriteString(nft.DeleteTables(pendingTable))
+	}
+	// if previous confirmed file exists, use that as rollback target
+	if haveConfirmed {
+		b.WriteString(confirmed)
+	}
+	return b.String()
+}
+
+// builds the last-resort script that removes nfty's tables entirely
+// leaves the box unfirewalled by nfty, which is the reachable state, same as a reboot
+func buildDeleteScript(tables ...string) string {
+	var b strings.Builder
+	seen := map[string]bool{}
+	for _, t := range tables {
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		b.WriteString(nft.DeleteTables(t))
+	}
+	return b.String()
+}
+
+// returns the table name recorded with the confirmed ruleset, or "" if unknown or invalid
+func confirmedTableName() string {
+	last, err := LoadLastApply()
+	if err != nil || last.Table == "" {
+		return ""
+	}
+	if err := config.ValidateTableName(last.Table); err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: ignoring invalid table name in %s: %v\n", LastApplyFile, err)
+		return ""
+	}
+	return last.Table
 }
 
 // creates .json file for tracking pending confirm changes
-// writes some metadata
-func WritePending(configPath, checksum string, deadlineSeconds int) error {
+// writes some metadata, plus the exact script being applied for promotion on confirm
+func WritePending(configPath, checksum, table, script string, deadlineSeconds int) error {
 	now := time.Now()
 
 	user := os.Getenv("SUDO_USER")
@@ -96,12 +202,17 @@ func WritePending(configPath, checksum string, deadlineSeconds int) error {
 		AppliedAt:  now,
 		Deadline:   now.Add(time.Duration(deadlineSeconds) * time.Second),
 		Checksum:   checksum,
+		Table:      table,
 	}
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshalling pending state: %w", err)
 	}
-	return os.WriteFile(PendingFile, data, 0600)
+	// script first, pending.json is the marker IsPending checks for
+	if err := writeFileAtomic(PendingScriptFile, []byte(script), 0600); err != nil {
+		return fmt.Errorf("writing pending script: %w", err)
+	}
+	return writeFileAtomic(PendingFile, data, 0600)
 }
 
 // bools whether there exists any pending changes needed
@@ -126,10 +237,12 @@ func LoadPending() (*PendingState, error) {
 // remove pending.json file once confirmed/rolled back
 func ClearPending() error {
 	err := os.Remove(PendingFile)
-	if os.IsNotExist(err) {
-		return nil
+	if err != nil && !os.IsNotExist(err) {
+		return err
 	}
-	return err
+	// best effort, an orphaned pending.nft is inert and overwritten by the next apply
+	os.Remove(PendingScriptFile)
+	return nil
 }
 
 // write data from last apply to disk for persistence
@@ -140,17 +253,18 @@ func WriteLastApply(state *PendingState) error {
 		AppliedAt:   state.AppliedAt,
 		ConfirmedAt: time.Now(),
 		Checksum:    state.Checksum,
+		Table:       state.Table,
 	}
 	data, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(LastApplyFile, data, 0600)
+	return writeFileAtomic(LastApplyFile, data, 0600)
 }
 
 // writes a last-apply record without an existing pending state
 // used by --skip-confirm where no pending.json is ever created
-func WriteLastApplyDirect(configPath, checksum string) error {
+func WriteLastApplyDirect(configPath, checksum, table string) error {
 	user := os.Getenv("SUDO_USER")
 	if user == "" {
 		user = os.Getenv("USER")
@@ -165,12 +279,13 @@ func WriteLastApplyDirect(configPath, checksum string) error {
 		AppliedAt:   time.Now(),
 		ConfirmedAt: time.Now(),
 		Checksum:    checksum,
+		Table:       table,
 	}
 	data, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(LastApplyFile, data, 0600)
+	return writeFileAtomic(LastApplyFile, data, 0600)
 }
 
 // reads/loads last apply state file
