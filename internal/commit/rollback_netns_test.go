@@ -182,6 +182,68 @@ func TestNetNSRollbackRestoresConfirmedAndLeavesDockerAlone(t *testing.T) {
 	}
 }
 
+// renaming [core] table + apply must remove the old tables, and rollback removes the new ones
+func TestNetNSRenamedTableNeverLeavesBothLive(t *testing.T) {
+	requireNetNS(t)
+	docker := applyFakeDocker(t)
+
+	confirmed := renderConf(t, netnsConfA)
+	mustApply(t, confirmed)
+	want := nftyTables(t, "nfty")
+
+	mustApply(t, nft.DeleteTables("nfty")+renderConf(t, netnsConfRenamed))
+	if got := nftyTables(t, "nfty"); got != "" {
+		t.Errorf("old tables still live after a renamed apply:\n%s", got)
+	}
+	if nftyTables(t, "nfty-renamed") == "" {
+		t.Fatal("renamed tables missing after apply")
+	}
+
+	mustApply(t, buildRollbackScript(confirmed, true, "nfty-renamed", "nfty"))
+
+	if got := nftyTables(t, "nfty-renamed"); got != "" {
+		t.Errorf("renamed tables still live after rollback:\n%s", got)
+	}
+	if got := nftyTables(t, "nfty"); got != want {
+		t.Errorf("rollback did not restore the confirmed tables\nwant:\n%s\ngot:\n%s", want, got)
+	}
+	if got := dockerTables(t); got != docker {
+		t.Errorf("docker's tables changed\nbefore:\n%s\nafter:\n%s", docker, got)
+	}
+}
+
+// nothing previously confirmed (fresh nfty setup), so rollback should removes nfty tables
+func TestNetNSRollbackWithoutConfirmedRemovesTables(t *testing.T) {
+	requireNetNS(t)
+	docker := applyFakeDocker(t)
+
+	mustApply(t, renderConf(t, netnsConfA))
+	mustApply(t, buildRollbackScript("", false, "nfty", ""))
+
+	if strings.Contains(tableNames(t), "nfty") {
+		t.Errorf("nfty tables still live:\n%s", tableNames(t))
+	}
+	if got := dockerTables(t); got != docker {
+		t.Errorf("docker's tables changed\nbefore:\n%s\nafter:\n%s", docker, got)
+	}
+}
+
+// emergency table WIPE must succeed, whether both named tables exist or not
+func TestNetNSDeleteScriptToleratesMissingTables(t *testing.T) {
+	requireNetNS(t)
+	docker := applyFakeDocker(t)
+
+	mustApply(t, renderConf(t, netnsConfA))
+	mustApply(t, buildDeleteScript("nfty", "nfty-never-existed"))
+
+	if strings.Contains(tableNames(t), "nfty") {
+		t.Errorf("nfty tables still live:\n%s", tableNames(t))
+	}
+	if got := dockerTables(t); got != docker {
+		t.Errorf("docker's tables changed\nbefore:\n%s\nafter:\n%s", docker, got)
+	}
+}
+
 // a failed/rejected script apply must leave the live ruleset exactly as it was
 func TestNetNSRejectedScriptChangesNothing(t *testing.T) {
 	requireNetNS(t)
