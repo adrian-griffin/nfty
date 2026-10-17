@@ -4,14 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.5.2] - 2026-Sep-5
-- add interactive TUI for status display 
-- reworked status struct and rendering logic for dual tui + cli support
-- dynamic tui-scaling for varying terminal widths 
-- dynamic .toml path resolution
-- in-tui path text editor
-- help page within tui, along with stubs for future pages
-- comprehensive test for tui rendering and safety
+## [Unreleased]
+
+### Add
+- interactive TUI for status display (`nfty tui`)
+  - dynamic scaling for varying terminal widths
+  - in-TUI config path editor
+  - help page, with stubs for future pages
+- dynamic `.toml` path resolution
+- real-kernel tests for rollback path, in a throwaway network namespace
+
+### Change
+- rollback restores the last confirmed ruleset (`confirmed.nft`) instead of a snapshot of the live ruleset
+- `confirm` persists the exact script that was applied, rather than a dump of the live ruleset
+- `nfty rollback` with nothing pending re-applies the confirmed ruleset
+- if confirmed ruleset fails to apply during rollback, nfty WIPES its own tables in emergency failstates
+- status struct reworked to serve both the TUI and the CLI
+
+### Fixed
+- rollback no longer touches other, existing tables (eg: docker)
+- renaming `[core] table` no longer leaves the old tables live
+
+### Remove
+- `rollback.nft` and `running.nft` state files
 
 ## [0.5.1] - 2026-Aug-30
 - fixed port-range validation logic bug
